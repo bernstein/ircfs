@@ -33,11 +33,10 @@ data Prefix = PrefixServer !Servername
   deriving (Eq,Ord,Show)
 --  <prefix>   ::= <servername> | <nick> [ '!' <user> ] [ '@' <host> ]
 prefix :: Parser Prefix
-prefix = 
-  PrefixNick <$> nick 
-             <*> optional (char8 '!' *> user)
-             <*> optional (char8 '@' *> host)
-  <|> PrefixServer <$> servername
+prefix = PrefixNick <$> nick 
+                    <*> optional (char8 '!' *> user)
+                    <*> optional (char8 '@' *> host)
+     <|> PrefixServer <$> servername
   
 data Command = CmdString B.ByteString | CmdNr Int
   deriving (Show,Read,Eq,Ord)
