@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-
 module Network.IRC.Message
 where
 
@@ -19,20 +18,26 @@ import Data.Maybe (maybeToList)
 -- and rfc2812
 -- http://www.irchelp.org/irchelp/rfc/rfc2812.txt
 
-data Message = Message (Maybe Prefix) Command (Maybe Params)
+data Message = Message (Maybe Prefix) Command Params
   deriving (Eq, Ord, Show)
 --  <message>  ::= [':' <prefix> <SPACE> ] <command> <params> <crlf>
 message :: Parser Message
-message = Message <$>
-  optional (char8 ':' *> prefix <* char8 ' ') <*> (command) <*> optional (params) <* crlf
+message = 
+  Message <$> optional (char8 ':' *> prefix <* space) 
+          <*> command
+          <*> params
+          <*  crlf
 
 data Prefix = PrefixServer !Servername
             | PrefixNick !Nick !(Maybe User) !(Maybe Host)
   deriving (Eq,Ord,Show)
 --  <prefix>   ::= <servername> | <nick> [ '!' <user> ] [ '@' <host> ]
 prefix :: Parser Prefix
-prefix = PrefixNick <$> nick <*> (optional (char8 '!' *> user)) <*> (optional (char8 '@' *> host))
-      <|> PrefixServer <$> servername
+prefix = 
+  PrefixNick <$> nick 
+             <*> optional (char8 '!' *> user)
+             <*> optional (char8 '@' *> host)
+  <|> PrefixServer <$> servername
   
 data Command = CmdString B.ByteString | CmdNr Int
   deriving (Show,Read,Eq,Ord)
@@ -42,6 +47,9 @@ command =  CmdNr <$> threeDigitNumber
        <|> CmdString <$> takeWhile1 isLetter 
 
 --  <SPACE>    ::= ' ' { ' ' }
+space :: Parser BS.ByteString
+space = takeWhile1 (==32)
+
 skipSpaces :: Parser ()
 skipSpaces = satisfy P8.isHorizontalSpace *> skipWhile P8.isHorizontalSpace
 
@@ -164,34 +172,49 @@ special :: Parser Word8
 special = satisfy isSpecial
 
 isSpecial :: Word8 -> Bool
-isSpecial = (inClass "`[]\\^{}-")
+isSpecial = (`elem` [45,91,93,96,92,94,123,125])
+-- (`elem` (map ord "-[]\\`^{}"))
 
 -- <nonwhite>   ::= <any 8bit code except SPACE (0x20), NUL (0x0), CR
 --                      (0xd), and LF (0xa)>
--- Nul  | 0x0  | 00 | \NUL
--- LF   | 0xa  | 10 | \n
--- CR   | 0xd  | 13 | \r
 -- SPACE| 0x20 | 32 | ' '
+-- Nul  | 0x0  | 00 | \NUL
+-- CR   | 0xd  | 13 | \r
+-- LF   | 0xa  | 10 | \n
 nonwhite :: Parser Word8
 nonwhite = satisfy isNonWhite
 
 isNonWhite :: Word8 -> Bool
-isNonWhite = notInClass "\0\13\10\32"
+isNonWhite = not.(`elem` [32,00,13,10])
 
 threeDigitNumber :: Parser Int
 threeDigitNumber = addUp <$> number <*> number <*> number 
-  where addUp a b c = (fromIntegral (a-48) * 100 + fromIntegral (b-48) * 10 + fromIntegral (c-48))
+  where addUp a b c = (fromIntegral (a-48) * 100 
+                    + fromIntegral (b-48) * 10 
+                    + fromIntegral (c-48))
 
 -- nospcrlfcl = %x01-09 / %x0B-0C / %x0E-1F / %x21-39 / %x3B-FF
--- nospcrlfcl = inClass (['\x01'..'\x09'] ++ ['\x0B'..'\x0C'] ++ ['\x0E'..'\x1F'] ++ ['\x21'..'\x39'] ++ ['\x3B'..'\xFF']
 nospcrlfcl :: Parser Word8
-nospcrlfcl = satisfy (inClass "\SOH-\t\v\f\SO-\US!-9;-\255")
+nospcrlfcl = satisfy isNospcrlfcl
 
 isNospcrlfcl :: Word8 -> Bool
-isNospcrlfcl = inClass "\SOH-\t\v\f\SO-\US!-9;-\255"
+isNospcrlfcl = not.(`elem` [0,10,13,32,58])
+--isNospcrlfcl = inClass "\SOH-\t\v\f\SO-\US!-9;-\255"
+-- nospcrlfclSet =
+--   map ord (['\x01'..'\x09'] ++ ['\x0B'..'\x0C'] ++ ['\x0E'..'\x1F'] ++ ['\x21'..'\x39'] ++ ['\x3B'..'\xFF'])
+-- [0,10,13,32,58] == [0..255] \\ nospcrlfclSet
+-- map chr [0,10,13,32,58] == "\NUL\n\r :"
+-- unittest 
+-- is_nospcrlfcl_spec = inClass 
+--   (['\x01'..'\x09'] ++ ['\x0B'..'\x0C'] ++ ['\x0E'..'\x1F'] ++ ['\x21'..'\x39'] ++ ['\x3B'..'\xFF'])
+-- test = all (uncurry (==)) $ zip (map is_nospcrlfcl_spec [0..255]) (map isNospcrlfcl [0..255])
+
+-- prop_isnospcrlfcl c = isNospcrlfcl c == is_nospcrlfcl_spec c
  
-testMsg1 = ":CalebDelnay!calebd@localhost PRIVMSG #mychannel :Hello everyone!\r\n"
+testMsg1 = 
+  ":CalebDelnay!calebd@localhost PRIVMSG #mychannel :Hello everyone!\r\n"
 testMsg2 = ":CalebDelnay!calebd@localhost QUIT :Bye bye!\r\n"
 testMsg3 = ":CalebDelnay!calebd@localhost JOIN #mychannel\r\n"
 testMsg4 = ":CalebDelnay!calebd@localhost MODE #mychannel -l\r\n"
 testMsg5 = "PING :irc.localhost.localdomain\r\n"
+
