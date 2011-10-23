@@ -18,7 +18,7 @@ import Data.Maybe (maybeToList)
 -- and rfc2812
 -- http://www.irchelp.org/irchelp/rfc/rfc2812.txt
 
-data Message = Message (Maybe Prefix) Command Params
+data Message = Message !(Maybe Prefix) !Command !Params
   deriving (Eq, Ord, Show)
 --  <message>  ::= [':' <prefix> <SPACE> ] <command> <params> <crlf>
 message :: Parser Message
