@@ -199,22 +199,4 @@ nospcrlfcl = satisfy isNospcrlfcl
 
 isNospcrlfcl :: Word8 -> Bool
 isNospcrlfcl = not.(`elem` [0,10,13,32,58])
---isNospcrlfcl = inClass "\SOH-\t\v\f\SO-\US!-9;-\255"
--- nospcrlfclSet =
---   map ord (['\x01'..'\x09'] ++ ['\x0B'..'\x0C'] ++ ['\x0E'..'\x1F'] ++ ['\x21'..'\x39'] ++ ['\x3B'..'\xFF'])
--- [0,10,13,32,58] == [0..255] \\ nospcrlfclSet
--- map chr [0,10,13,32,58] == "\NUL\n\r :"
--- unittest 
--- is_nospcrlfcl_spec = inClass 
---   (['\x01'..'\x09'] ++ ['\x0B'..'\x0C'] ++ ['\x0E'..'\x1F'] ++ ['\x21'..'\x39'] ++ ['\x3B'..'\xFF'])
--- test = all (uncurry (==)) $ zip (map is_nospcrlfcl_spec [0..255]) (map isNospcrlfcl [0..255])
-
--- prop_isnospcrlfcl c = isNospcrlfcl c == is_nospcrlfcl_spec c
- 
-testMsg1 = 
-  ":CalebDelnay!calebd@localhost PRIVMSG #mychannel :Hello everyone!\r\n"
-testMsg2 = ":CalebDelnay!calebd@localhost QUIT :Bye bye!\r\n"
-testMsg3 = ":CalebDelnay!calebd@localhost JOIN #mychannel\r\n"
-testMsg4 = ":CalebDelnay!calebd@localhost MODE #mychannel -l\r\n"
-testMsg5 = "PING :irc.localhost.localdomain\r\n"
 
