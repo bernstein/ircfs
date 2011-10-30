@@ -22,9 +22,9 @@ data Message = Message !(Maybe Prefix) !Command !Params
   deriving (Eq, Ord, Show)
 --  <message>  ::= [':' <prefix> <SPACE> ] <command> <params> <crlf>
 message :: Parser Message
-message = 
+message =
   --Message <$> optional (char8 ':' *> prefix <* space) 
-  Message <$> optional (char8 ':' *> prefix) 
+  Message <$> optional (char8 ':' *> prefix)
           <*> (command <?> "command")
           <*> (params <?> "params")
           <*  crlf
@@ -34,14 +34,14 @@ data Prefix = PrefixServer !Servername
   deriving (Eq,Ord,Show)
 --  <prefix>   ::= <servername> | <nick> [ '!' <user> ] [ '@' <host> ]
 prefix :: Parser Prefix
-prefix = 
+prefix =
          PrefixServer <$> servername <*space -- lookAhead (char8 ' ')
-     <|> PrefixNick <$> nick 
+     <|> PrefixNick <$> nick
                     <*> optional (char8 '!' *> user)
                     <*> optional (char8 '@' *> host)
                     <* space -- lookAhead (char8 ' ')
-  
-data Command = 
+
+data Command =
     CmdNumericReply Int
   | PASS
   | NICK
@@ -68,7 +68,7 @@ data Command =
   | INVITE
   | WHOIS
   | ERROR
-  | CmdString B.ByteString 
+  | CmdString B.ByteString
   deriving (Show,Read,Eq,Ord)
 --  <command>  ::= <letter> { <letter> } | <number> <number> <number>
 command :: Parser Command
@@ -89,7 +89,7 @@ command =  CmdNumericReply   <$> threeDigitNumber
        <|> PRIVMSG <$ string "PRIVMSG"
        <|> QUIT    <$ string "QUIT"
        <|> TIME    <$ string "TIME"
-       <|> TOPIC   <$ string "TOPIC" 
+       <|> TOPIC   <$ string "TOPIC"
        <|> USER    <$ string "USER"
        <|> WHOIS   <$ string "WHOIS"
        <|> WHO     <$ string "WHO"
@@ -128,7 +128,7 @@ middle = BS.cons <$> nospcrlfcl <*> P.takeWhile (\c -> isNospcrlfcl c || c == 58
 --                                  NUL or CR or LF>
 type Trailing = B.ByteString
 trailing :: Parser Trailing
-trailing = BS.pack <$> many (char8 ':' <|> char8 ' ' <|> nospcrlfcl) 
+trailing = BS.pack <$> many (char8 ':' <|> char8 ' ' <|> nospcrlfcl)
 
 -- TODO XXX: nospcrlfcl or nocrlfcl ???
 nocrlfcl :: Parser Word8
@@ -248,7 +248,7 @@ isNonWhite = not.(`elem` [32,00,13,10])
 threeDigitNumber :: Parser Int
 threeDigitNumber = addUp <$> number <*> number <*> number 
   where addUp a b c = fromIntegral (a-48) * 100 
-                    + fromIntegral (b-48) * 10 
+                    + fromIntegral (b-48) * 10
                     + fromIntegral (c-48)
 
 -- nospcrlfcl = %x01-09 / %x0B-0C / %x0E-1F / %x21-39 / %x3B-FF
