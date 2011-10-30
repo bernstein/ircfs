@@ -1,6 +1,7 @@
 # Welcome to ircfs
 
 Ircfs is an irc client with a fuse file system interface.
+It is a linux clone of inferno's ircfs.
 
 # Join in!
 
