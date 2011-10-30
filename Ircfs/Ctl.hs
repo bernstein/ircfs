@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Filesystem.IRC.Ctl
+module Ircfs.Ctl
 where
 
 import Control.Applicative hiding (many)
