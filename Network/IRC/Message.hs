@@ -25,8 +25,8 @@ message :: Parser Message
 message =
   --Message <$> optional (char8 ':' *> prefix <* space) 
   Message <$> optional (char8 ':' *> prefix)
-          <*> (command <?> "command")
-          <*> (params <?> "params")
+          <*> command
+          <*> params
           <*  crlf
 
 data Prefix = PrefixServer !Servername
@@ -46,15 +46,15 @@ data Command =
   | PASS
   | NICK
   | USER
-  -- | OPER
+  | OPER
   | MODE
-  -- | SERVICE
+  | SERVICE
   | QUIT
-  -- | SQUIT
+  | SQUIT
   | JOIN
   | PART
   | NAMES
-  -- | KICK
+  | KICK
   | PRIVMSG
   | NOTICE
   | MOTD
@@ -77,17 +77,21 @@ command =  CmdNumericReply   <$> threeDigitNumber
        <|> ERROR   <$ string "ERROR"
        <|> INVITE  <$ string "INVITE"
        <|> JOIN    <$ string "JOIN"
+       <|> KICK    <$ string "KICK"
        <|> MODE    <$ string "MODE"
        <|> MOTD    <$ string "MOTD"
        <|> NAMES   <$ string "NAMES"
        <|> NICK    <$ string "NICK"
        <|> NOTICE  <$ string "NOTICE"
+       <|> OPER    <$ string "OPER"
        <|> PART    <$ string "PART"
        <|> PASS    <$ string "PASS"
        <|> PING    <$ string "PING"
        <|> PONG    <$ string "PONG"
        <|> PRIVMSG <$ string "PRIVMSG"
        <|> QUIT    <$ string "QUIT"
+       <|> SQUIT   <$ string "SQUIT"
+       <|> SERVICE <$ string "SERVICE"
        <|> TIME    <$ string "TIME"
        <|> TOPIC   <$ string "TOPIC"
        <|> USER    <$ string "USER"
