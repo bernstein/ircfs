@@ -8,17 +8,24 @@ import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
 import System.FilePath (splitFileName)
+import System.Environment (withArgs)
+import qualified System.Fuse as F
+import Control.Monad.IO.Class (liftIO)
 import Data.Maybe (maybe)
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
 import qualified Network.IRC.Message as I
 import Data.Attoparsec as A
-import Filesystem.IRC.Ctl as I
+import Data.Attoparsec.Enumerator as A
+import qualified Network.Socket.Enumerator as E
+import qualified Data.Enumerator as E hiding (drop)
+import qualified Data.Enumerator.List as EL
 
 import qualified Network.Socket as N hiding (recv)
 import qualified Network.Socket.ByteString  as N (recv, sendAll)
 
-import qualified System.Fuse as F
+import Ircfs.Ctl as I
+import Ircfs.Types
 
 --type FileInfoHandler = FilePath -> IO (Maybe FsObject)
 data IrcfsFileHandle = IrcfsFileHandle
@@ -30,6 +37,28 @@ msgToByteString (I.Message Nothing (I.CmdNumericReply _) ps) =
 msgToByteString (I.Message Nothing (I.CmdString _) ps) = error "msgToByteString"
 msgToByteString (I.Message Nothing cmd ps) = 
   (B.pack (show cmd)) `B.append` " " `B.append` (B.unwords ps) `B.append` "\r\n"
+
+chanToIter2 :: C.Chan a -> E.Iteratee a IO ()
+chanToIter2 chan = go
+  where
+    go = EL.head >>= maybe go (\x -> liftIO (C.writeChan chan x) >> go)
+
+iterMessage :: Monad m => E.Iteratee B.ByteString m I.Message
+iterMessage = A.iterParser I.message
+
+messages :: Monad m => E.Enumeratee B.ByteString I.Message m a
+messages = E.sequence iterMessage
+
+doIRC sock (I.Message _ I.PING ps) = do
+              liftIO $ N.sendAll sock $ "PONG " `B.append` (B.intercalate "," ps) `B.append`  "\r\n"
+              liftIO $ putStrLn "send PONG"
+
+ircReader :: N.Socket -> C.Chan I.Message -> String -> String -> IO ()
+ircReader sock ircinc nick pass = do
+  --N.sendAll sock $ B.pack $ "NICK " ++ (nick cfg) ++ "\r\n"
+  --N.sendAll sock $ B.pack $ "USER none 0 * :" ++ (nick cfg)++"\r\n"
+  x <- E.run $ E.enumSocket 1024 sock E.$$ messages E.=$ chanToIter2 ircinc --printChunks True
+  return ()
 
 ircWriter :: N.Socket -> C.Chan B.ByteString -> IO ()
 ircWriter sock ircoutc = do
@@ -53,38 +82,29 @@ fsInit cfg ircoutc = do
   let serveraddr = head addrinfos
   sock <- N.socket (N.addrFamily serveraddr) N.Stream N.defaultProtocol
   N.connect sock (N.addrAddress serveraddr)
+
+  ircinc <- C.newChan
+  ms <- C.getChanContents ircinc
+  C.forkIO (ircReader sock ircinc (nick cfg) (secret cfg))
+
   N.sendAll sock $ B.pack $ "NICK " ++ (nick cfg) ++ "\r\n"
-  N.sendAll sock $ B.pack $ "USER " ++ (nick cfg) ++" 0 * :tutorial bot\r\n"
+  N.sendAll sock $ B.pack $ "USER none 0 * :" ++ (nick cfg)++"\r\n"
   C.forkIO $ ircWriter sock ircoutc
+
+  C.forkIO (mapM_ (doIRC sock) ms)
   return ()
 
 fsDestroy :: IO ()
 fsDestroy = do
   return ()
 
-data Config = Config 
-            { nick :: String
-            , fromhost :: String
-            , addr :: String
-            , port :: String
-            , passwd :: String
-            , logpath :: FilePath
-            , mtpt :: FilePath
-            }
-
 main :: IO ()
 main = N.withSocketsDo $ do
 
-  ircoutc <- C.newChan
+  args <- cmdLine
 
-  let args = Config { nick = "ircfsNG"
-                    , fromhost = ""
-                    , addr = "irc.freenode.net"
-                    , port = "6667"
-                    , passwd = ""
-                    , logpath = "/home/hiro/ircfs.log"
-                    , mtpt = ""
-                    }
+  ircoutc <- C.newChan
+  --ircerrc <- C.newChan
 
   let ops = F.defaultFuseOps {
               F.fuseInit = fsInit args ircoutc
@@ -96,7 +116,7 @@ main = N.withSocketsDo $ do
             , F.fuseWrite = fsWrite ircoutc
             , F.fuseSetFileSize = fsTruncate
             }
-  F.fuseMain ops F.defaultExceptionHandler
+  withArgs [mtpt args] $ F.fuseMain ops F.defaultExceptionHandler
 
 data Target = Target
 
