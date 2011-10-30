@@ -85,11 +85,10 @@ fsInit cfg ircoutc = do
   N.connect sock (N.addrAddress serveraddr)
 
   ircinc <- C.newChan
-  ms <- C.getChanContents ircinc
-  C.forkIO (ircReader sock ircinc (nick cfg) (secret cfg))
+  C.forkIO $ ircReader sock ircinc (nick cfg) (secret cfg)
 
-  N.sendAll sock $ B.pack $ "NICK " ++ (nick cfg) ++ "\r\n"
-  N.sendAll sock $ B.pack $ "USER none 0 * :" ++ (nick cfg)++"\r\n"
+  N.sendAll sock $ B.pack $ "NICK " ++ nick cfg ++ "\r\n"
+  N.sendAll sock $ B.pack $ "USER none 0 * :" ++ nick cfg ++"\r\n"
   C.forkIO $ ircWriter sock ircoutc
 
   ms <- C.getChanContents ircinc
@@ -218,48 +217,47 @@ showFile Qdata    = "data"
 showFilepath :: Qreq -> FilePath
 showFilepath = B.unpack . showFile
 
-modeFile :: Qreq -> FileMode
-modeFile Qroot    = 0o555 -- DIR
-modeFile Qrootctl = 0o222
-modeFile Qevent   = 0o444
-modeFile Qraw     = 0o666
-modeFile Qnick    = 0o444
-modeFile Qpong    = 0o444
-modeFile Qdir     = 0o555 -- DIR
-modeFile Qctl     = 0o222
-modeFile Qname    = 0o444
-modeFile Qusers   = 0o444
-modeFile Qdata    = 0o666
+filemode :: Qreq -> FileMode
+filemode Qroot    = 0o555 -- DIR
+filemode Qrootctl = 0o222
+filemode Qevent   = 0o444
+filemode Qraw     = 0o666
+filemode Qnick    = 0o444
+filemode Qpong    = 0o444
+filemode Qdir     = 0o555 -- DIR
+filemode Qctl     = 0o222
+filemode Qname    = 0o444
+filemode Qusers   = 0o444
+filemode Qdata    = 0o666
 
 fileStat :: Qreq -> F.FileStat
-fileStat Qroot    = defaultDirStat  { F.statFileMode = modeFile Qroot }
-fileStat Qrootctl = defaultFileStat { F.statFileMode = modeFile Qrootctl }
-fileStat Qevent   = defaultFileStat { F.statFileMode = modeFile Qevent }
-fileStat Qraw     = defaultFileStat { F.statFileMode = modeFile Qraw }
-fileStat Qnick    = defaultFileStat { F.statFileMode = modeFile Qnick }
-fileStat Qpong    = defaultFileStat { F.statFileMode = modeFile Qpong }
-fileStat Qdir     = defaultDirStat  { F.statFileMode = modeFile Qroot }
-fileStat Qctl     = defaultFileStat { F.statFileMode = modeFile Qrootctl }
-fileStat Qname    = defaultFileStat { F.statFileMode = modeFile Qname }
-fileStat Qusers   = defaultFileStat { F.statFileMode = modeFile Qusers }
-fileStat Qdata    = defaultFileStat { F.statFileMode = modeFile Qdata }
+fileStat Qroot    = defaultDirStat  { F.statFileMode = filemode Qroot }
+fileStat Qrootctl = defaultFileStat { F.statFileMode = filemode Qrootctl }
+fileStat Qevent   = defaultFileStat { F.statFileMode = filemode Qevent }
+fileStat Qraw     = defaultFileStat { F.statFileMode = filemode Qraw }
+fileStat Qnick    = defaultFileStat { F.statFileMode = filemode Qnick }
+fileStat Qpong    = defaultFileStat { F.statFileMode = filemode Qpong }
+fileStat Qdir     = defaultDirStat  { F.statFileMode = filemode Qroot }
+fileStat Qctl     = defaultFileStat { F.statFileMode = filemode Qrootctl }
+fileStat Qname    = defaultFileStat { F.statFileMode = filemode Qname }
+fileStat Qusers   = defaultFileStat { F.statFileMode = filemode Qusers }
+fileStat Qdata    = defaultFileStat { F.statFileMode = filemode Qdata }
 
 toQreq :: String -> Maybe Qreq
-toQreq "ctl" = Just Qctl
+toQreq "ctl"   = Just Qctl
 toQreq "event" = Just Qevent
-toQreq "nick" = Just Qnick
-toQreq "raw" = Just Qraw
-toQreq "pong" = Just Qpong
-toQreq "data" = Just Qdata
-toQreq "name" = Just Qname
+toQreq "nick"  = Just Qnick
+toQreq "raw"   = Just Qraw
+toQreq "pong"  = Just Qpong
+toQreq "data"  = Just Qdata
+toQreq "name"  = Just Qname
 toQreq "users" = Just Qusers
-toQreq _        = Nothing
+toQreq _       = Nothing
 
 fromFilePath :: FilePath -> Maybe Qreq
-fromFilePath "/" = Just Qroot
+fromFilePath "/"    = Just Qroot
 fromFilePath "/ctl" = Just Qrootctl
-fromFilePath p = toQreq f
-    where (d,f) = splitFileName p
+fromFilePath p      = toQreq . snd . splitFileName $ p
 
 rootDirFiles :: [Qreq]
 rootDirFiles = [Qctl, Qname, Qdata, Qusers]
