@@ -27,7 +27,8 @@ library
                         Filesystem.IRC.IRCcon
                         Filesystem.IRC.Ctl
     build-depends: base, bytestring >= 0.9, attoparsec, HFuse, unix,
-                    filepath, network
+                    filepath, network, enumerator, network-enumerator,
+                    transformers
 
 executable ircfs
     main-is:            Main.hs
