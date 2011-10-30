@@ -117,7 +117,7 @@ main = N.withSocketsDo $ do
             , F.fuseWrite = fsWrite ircoutc
             , F.fuseSetFileSize = fsTruncate
             }
-  withArgs [mtpt args] $ F.fuseMain ops F.defaultExceptionHandler
+  withArgs [mtpt args,"-f"] $ F.fuseMain ops F.defaultExceptionHandler
 
 data Target = Target
 
