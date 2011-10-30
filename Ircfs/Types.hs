@@ -38,7 +38,22 @@ conf = Config
   , secret = def &= help "port number" &= typ "PASSWORD"
   , logpath = def &= help "Path to logfile" &= typFile
   , mtpt = "/mnt/irc" &= help "Mount point" &= typDir
-  } &= summary ("ircfs v" ++ showVersion ++ ", (C) Andreas-C. Bernstein 2011\n") &= program "ircfs"
+  } &= summary ("ircfs v" ++ showVersion ++ ", (C) Andreas-C. Bernstein 2011\n")
+    &= program "ircfs"
 
 cmdLine :: IO Config
 cmdLine = cmdArgs conf
+
+data Qreq = Qroot
+          | Qrootctl
+          | Qevent
+          | Qraw
+          | Qnick
+          | Qpong
+          | Qdir
+          | Qctl
+          | Qname
+          | Qusers
+          | Qdata
+  deriving (Show,Eq,Ord)
+

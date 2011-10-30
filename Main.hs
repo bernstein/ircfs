@@ -188,19 +188,6 @@ fsTruncate p off
 fsFileStat :: FilePath -> IO (Either Errno F.FileStat)
 fsFileStat p = return $ maybe (Left eNOENT) (Right. fileStat) (fromFilePath p)
 
-data Qreq = Qroot
-          | Qrootctl
-          | Qevent
-          | Qraw
-          | Qnick
-          | Qpong
-          | Qdir
-          | Qctl
-          | Qname
-          | Qusers
-          | Qdata
-  deriving (Show,Eq,Ord)
-
 showFile :: Qreq -> B.ByteString
 showFile Qroot    = "/"
 showFile Qrootctl = "ctl"
