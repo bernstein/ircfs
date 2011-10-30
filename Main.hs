@@ -14,7 +14,6 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Maybe (maybe)
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
-import qualified Network.IRC.Message as I
 import Data.Attoparsec as A
 import Data.Attoparsec.Enumerator as A
 import qualified Network.Socket.Enumerator as E
@@ -24,6 +23,7 @@ import qualified Data.Enumerator.List as EL
 import qualified Network.Socket as N hiding (recv)
 import qualified Network.Socket.ByteString  as N (recv, sendAll)
 
+import qualified Network.IRC.Message as I
 import Ircfs.Ctl as I
 import Ircfs.Types
 
