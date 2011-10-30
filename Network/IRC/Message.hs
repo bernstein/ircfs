@@ -23,9 +23,10 @@ data Message = Message !(Maybe Prefix) !Command !Params
 --  <message>  ::= [':' <prefix> <SPACE> ] <command> <params> <crlf>
 message :: Parser Message
 message = 
-  Message <$> optional (char8 ':' *> prefix <* space) 
-          <*> command
-          <*> params
+  --Message <$> optional (char8 ':' *> prefix <* space) 
+  Message <$> optional (char8 ':' *> prefix) 
+          <*> (command <?> "command")
+          <*> (params <?> "params")
           <*  crlf
 
 data Prefix = PrefixServer !Servername
@@ -33,17 +34,67 @@ data Prefix = PrefixServer !Servername
   deriving (Eq,Ord,Show)
 --  <prefix>   ::= <servername> | <nick> [ '!' <user> ] [ '@' <host> ]
 prefix :: Parser Prefix
-prefix = PrefixNick <$> nick 
+prefix = 
+         PrefixServer <$> servername <*space -- lookAhead (char8 ' ')
+     <|> PrefixNick <$> nick 
                     <*> optional (char8 '!' *> user)
                     <*> optional (char8 '@' *> host)
-     <|> PrefixServer <$> servername
+                    <* space -- lookAhead (char8 ' ')
   
-data Command = CmdString B.ByteString | CmdNr Int
+data Command = 
+    CmdNumericReply Int
+  | PASS
+  | NICK
+  | USER
+  -- | OPER
+  | MODE
+  -- | SERVICE
+  | QUIT
+  -- | SQUIT
+  | JOIN
+  | PART
+  | NAMES
+  -- | KICK
+  | PRIVMSG
+  | NOTICE
+  | MOTD
+  | TIME
+  | WHO
+  | PING
+
+  | AWAY
+  | TOPIC
+  | PONG
+  | INVITE
+  | WHOIS
+  | ERROR
+  | CmdString B.ByteString 
   deriving (Show,Read,Eq,Ord)
 --  <command>  ::= <letter> { <letter> } | <number> <number> <number>
 command :: Parser Command
-command =  CmdNr <$> threeDigitNumber
-       <|> CmdString <$> takeWhile1 isLetter 
+command =  CmdNumericReply   <$> threeDigitNumber
+       <|> AWAY    <$ string "AWAY"
+       <|> ERROR   <$ string "ERROR"
+       <|> INVITE  <$ string "INVITE"
+       <|> JOIN    <$ string "JOIN"
+       <|> MODE    <$ string "MODE"
+       <|> MOTD    <$ string "MOTD"
+       <|> NAMES   <$ string "NAMES"
+       <|> NICK    <$ string "NICK"
+       <|> NOTICE  <$ string "NOTICE"
+       <|> PART    <$ string "PART"
+       <|> PASS    <$ string "PASS"
+       <|> PING    <$ string "PING"
+       <|> PONG    <$ string "PONG"
+       <|> PRIVMSG <$ string "PRIVMSG"
+       <|> QUIT    <$ string "QUIT"
+       <|> TIME    <$ string "TIME"
+       <|> TOPIC   <$ string "TOPIC" 
+       <|> USER    <$ string "USER"
+       <|> WHOIS   <$ string "WHOIS"
+       <|> WHO     <$ string "WHO"
+       <|> ((CmdString <$> takeWhile1 isLetter ) <?> "Cmdstring hat nen problem")
+       -- <|> fail "command"
 
 --  <SPACE>    ::= ' ' { ' ' }
 space :: Parser BS.ByteString
@@ -79,9 +130,16 @@ type Trailing = B.ByteString
 trailing :: Parser Trailing
 trailing = BS.pack <$> many (char8 ':' <|> char8 ' ' <|> nospcrlfcl) 
 
+-- TODO XXX: nospcrlfcl or nocrlfcl ???
+nocrlfcl :: Parser Word8
+nocrlfcl = satisfy isNospcrlfcl
+
+isNocrlfcl :: Word8 -> Bool
+isNocrlfcl = not.(`elem` [0,10,13])
+
 --  <crlf>     ::= CR LF
 crlf :: Parser ()
-crlf = () <$ (string "\r\n")
+crlf = () <$ string "\r\n"
 --crlf = endOfLine -- (() <$ string "\r\n") <|> (() <$ char '\n')
 
 -- Most protocol messages specify additional semantics and syntax for
@@ -93,7 +151,7 @@ crlf = () <$ (string "\r\n")
 -- <target>     ::= <to> [ "," <target> ]
 type Target = [To]
 target :: Parser Target
-target = to `sepBy1` (char8 ',')
+target = to `sepBy1` char8 ','
 
 data To = ToChannel Channel
         | ToUserAtServer User Servername
@@ -109,7 +167,7 @@ to =  ToChannel <$> channel
 type Channel = B.ByteString
 -- <channel>    ::= ('#' | '&') <chstring>
 channel :: Parser Channel
-channel = (BS.cons) <$> satisfy (inClass "#&") <*> takeWhile1 isChstring
+channel = BS.cons <$> satisfy (inClass "#&") <*> takeWhile1 isChstring
 
 type Servername = Host
 -- <servername> ::= <host>
@@ -119,7 +177,8 @@ servername = host
 type Host = B.ByteString
 -- <host>       ::= see RFC 952 [DNS:4] for details on allowed hostnames
 host :: Parser Host
-host = BS.cons <$> letter <*> P.takeWhile (inClass "a-zA-Z0-9.-")
+--host = BS.cons <$> letter <*> P.takeWhile (inClass "a-zA-Z0-9.-")
+host = P.takeWhile1 (inClass "a-zA-Z0-9.-")
 
 type Nick = B.ByteString
 -- <nick>       ::= <letter> { <letter> | <number> | <special> }
@@ -130,7 +189,7 @@ nick = BS.cons <$> letter <*> P.takeWhile
 type Mask = B.ByteString
 -- <mask>       ::= ('#' | '$') <chstring>^
 mask :: Parser Mask
-mask = (BS.cons) <$> satisfy (inClass "#$") <*> takeWhile1 isChstring
+mask = BS.cons <$> satisfy (inClass "#$") <*> takeWhile1 isChstring
 
 -- <chstring>   ::= <any 8bit code except SPACE, BELL, NUL, CR, LF and
 --                      comma (',')>
@@ -188,9 +247,9 @@ isNonWhite = not.(`elem` [32,00,13,10])
 
 threeDigitNumber :: Parser Int
 threeDigitNumber = addUp <$> number <*> number <*> number 
-  where addUp a b c = (fromIntegral (a-48) * 100 
+  where addUp a b c = fromIntegral (a-48) * 100 
                     + fromIntegral (b-48) * 10 
-                    + fromIntegral (c-48))
+                    + fromIntegral (c-48)
 
 -- nospcrlfcl = %x01-09 / %x0B-0C / %x0E-1F / %x21-39 / %x3B-FF
 nospcrlfcl :: Parser Word8
