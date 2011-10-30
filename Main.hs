@@ -49,9 +49,10 @@ iterMessage = A.iterParser I.message
 messages :: Monad m => E.Enumeratee B.ByteString I.Message m a
 messages = E.sequence iterMessage
 
-doIRC sock (I.Message _ I.PING ps) = do
+doIRC ircoutc sock (I.Message _ I.PING ps) = do
               liftIO $ N.sendAll sock $ "PONG " `B.append` (B.intercalate "," ps) `B.append`  "\r\n"
               liftIO $ putStrLn "send PONG"
+doIRC ircoutc _ m = liftIO $ print m
 
 ircReader :: N.Socket -> C.Chan I.Message -> String -> String -> IO ()
 ircReader sock ircinc nick pass = do
@@ -91,7 +92,8 @@ fsInit cfg ircoutc = do
   N.sendAll sock $ B.pack $ "USER none 0 * :" ++ (nick cfg)++"\r\n"
   C.forkIO $ ircWriter sock ircoutc
 
-  C.forkIO (mapM_ (doIRC sock) ms)
+  ms <- C.getChanContents ircinc
+  C.forkIO $ mapM_ (doIRC ircoutc sock) ms
   return ()
 
 fsDestroy :: IO ()
