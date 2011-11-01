@@ -262,3 +262,13 @@ nospcrlfcl = satisfy isNospcrlfcl
 isNospcrlfcl :: Word8 -> Bool
 isNospcrlfcl = not.(`elem` [0,10,13,32,58])
 
+toByteString :: Message -> B.ByteString
+toByteString (Message Nothing (CmdNumericReply _) ps) = "toByteString: CmdNumericReply not implemented yet"
+toByteString (Message Nothing (CmdString _) ps) = "toByteString: CmdString not Implemented yet"
+toByteString (Message Nothing PONG ps) = 
+  "PONG " `B.append` (B.intercalate "," ps) `B.append` "\r\n"
+toByteString (Message Nothing cmd ps) = 
+  (B.pack (show cmd)) `B.append` " " `B.append` (B.unwords ps) `B.append` "\r\n"
+toByteString (Message _ cmd ps) = 
+  (B.pack (show cmd)) `B.append` " " `B.append` (B.unwords ps) `B.append` "\r\n"
+
