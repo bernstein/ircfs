@@ -26,13 +26,15 @@ library
     exposed-modules:    Network.IRC.Message
     build-depends: base, bytestring >= 0.9, attoparsec, HFuse, unix,
                     filepath, network, enumerator, network-enumerator,
-                    transformers, cmdargs, attoparsec-enumerator
+                    transformers, cmdargs, attoparsec-enumerator, rope, mtl
 
 executable ircfs
     main-is:            Main.hs
     ghc-options:        -threaded
     other-modules:
                         Network.IRC.Message
+                        System.Fuse.Request
                         Filesystem.IRC.IRCcon
                         Ircfs.Ctl
                         Ircfs.Types
+                        Ircfs.CmdLine
