@@ -52,11 +52,13 @@ parseCtl = awayCmd
       <|> debugCmd
       <|> joinCmd
       <|> meCmd
+      <|> msgCmd
       <|> namesCmd
       <|> nCmd
       <|> nickCmd
       <|> partCmd
-      <|> msgCmd
+      <|> quitCmd
+      -- <|> removeCmd
       <|> whoCmd
       <|> unknownCmd
 
@@ -65,13 +67,14 @@ backCmd      = Back <$ A8.string "back"
 debugCmd     = Debug <$ A8.string "debug"
 joinCmd      = Join <$> (A8.string "join" *> I.space *> I.channel)
 meCmd        = Me <$> (A8.string "me" *> I.space *> remainder)
+msgCmd       = Privmsg <$> (A8.string "msg" *> I.space *> (I.nick <|> I.channel)) 
+                        <*> (I.space *> remainder)
 namesCmd     = Names <$> (A8.string "names" *> I.space *> remainder)
 nCmd         = Names <$> (A8.string "n" *> I.space *> remainder)
 nickCmd      = Nick <$> (A8.string "nick" *> I.space *> I.nick)
 partCmd      = Part <$> (A8.string "part" *> I.space *> remainder)
-msgCmd       = Privmsg <$> (A8.string "msg" *> I.space *> (I.nick <|> I.channel)) 
-                        <*> (I.space *> remainder)
-removeCmd    = Remove <$> (A8.string "remove" *> I.space *> remainder)
+quitCmd      = Quit <$> (A8.string "quit" *> I.space *> remainder)
+--removeCmd    = Remove <$> (A8.string "remove" *> I.space *> remainder)
 whoCmd       = Who  <$> (A8.string "whois" *> I.space *> I.nick)
 unknownCmd   = Unknown <$> remainder
 
@@ -84,10 +87,16 @@ remainder = A.takeTill A8.isEndOfLine
 -- upperCaseFirstWord
 
 toMessage :: CtlCommand -> I.Message
-toMessage Back = I.Message Nothing I.AWAY []
-toMessage (Nick s) = I.Message Nothing I.NICK [s]
+toMessage (Away s) = I.Message Nothing I.AWAY [s]
+toMessage Back     = I.Message Nothing I.AWAY []
 toMessage (Join s) = I.Message Nothing I.JOIN [s]
+--toMessage (Me s)   = I.Message Nothing I.JOIN [s]
+toMessage (Names s) = I.Message Nothing I.NAMES [s]
+toMessage (Nick s) = I.Message Nothing I.NICK [s]
 toMessage (Part s) = I.Message Nothing I.PART [s]
 toMessage (Privmsg t s) = I.Message Nothing I.PRIVMSG [t,B.cons 58 s]
+toMessage (Quit s) = I.Message Nothing I.QUIT [s]
+--toMessage (Remove s) = I.Message Nothing I.REMOVE [s]
+toMessage (Who s) = I.Message Nothing I.WHO [s]
 toMessage _ = error "toMessage: implement the rest of me"
 
