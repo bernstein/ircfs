@@ -29,7 +29,6 @@ data Fidfile = Fidfile
   { fid :: Fid
   , histoff :: Int
   , histo :: Int
-  --, reads :: [Tmsg]
   , a :: [String]
   , singlebuf :: Int
   }
