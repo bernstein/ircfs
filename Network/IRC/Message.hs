@@ -269,6 +269,21 @@ toByteString (Message Nothing PONG ps) =
   "PONG " `B.append` (B.intercalate "," ps) `B.append` "\r\n"
 toByteString (Message Nothing cmd ps) = 
   (B.pack (show cmd)) `B.append` " " `B.append` (B.unwords ps) `B.append` "\r\n"
-toByteString (Message _ cmd ps) = 
-  (B.pack (show cmd)) `B.append` " " `B.append` (B.unwords ps) `B.append` "\r\n"
+toByteString (Message (Just p) cmd ps) =
+  prefixToByteString p
+  `B.append` " "
+  `B.append` (B.pack (show cmd))
+  `B.append` " "
+  `B.append` (B.unwords ps)
+  `B.append` "\r\n"
+
+prefixToByteString :: Prefix -> B.ByteString
+prefixToByteString (PrefixServer s) = ":" `B.append` s
+prefixToByteString (PrefixNick n Nothing Nothing) = ":" `B.append` n
+prefixToByteString (PrefixNick n (Just u) Nothing) =
+  ":" `B.append` n `B.append` "!" `B.append` u
+prefixToByteString (PrefixNick n Nothing (Just h)) =
+  ":" `B.append` n `B.append` "@" `B.append` h
+prefixToByteString (PrefixNick n (Just u) (Just h)) =
+  ":" `B.append` n `B.append` "!" `B.append` "@" `B.append` h
 
