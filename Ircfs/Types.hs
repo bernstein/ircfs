@@ -91,6 +91,8 @@ data Connection =
 
 type File = B.ByteString
 
+--ctlLens :: L.Lens Connection File
+--ctlLens = L.lens ctlFile (\x s -> s { ctlFile = x })
 addrLens :: L.Lens Connection File
 addrLens = L.lens addr (\x s -> s { addr = x })
 nickLens :: L.Lens Connection File
