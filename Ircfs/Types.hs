@@ -16,6 +16,8 @@
 module Ircfs.Types
 where
 
+import Prelude hiding ((.), id)
+import Control.Category
 import Control.Applicative
 import qualified System.Posix.Types as S
 import qualified Data.ByteString.Char8 as B
@@ -25,12 +27,17 @@ import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
 import Control.Monad.State
 import qualified System.Fuse as F
+import qualified Data.Lens.Common as L
+import Data.IntMap
 
 -- | IrcfsState, the irc file system state.
 data IrcfsState = IrcfsState
     { connection :: Connection
     -- , fsreq :: C.Chan FsRequest -- > move to IrcfsState
     } 
+
+connectionLens :: L.Lens IrcfsState Connection
+connectionLens = L.lens connection (\x s -> s { connection = x })
 
 io :: MonadIO m => IO a -> m a
 io = liftIO
@@ -77,12 +84,31 @@ data Connection =
     -- readable Files in the root dir
     -- , ctlFile :: B.ByteString -- reading provides command history ?
     -- , commandHistoryFile
-    , eventFile :: B.ByteString -- everything
-    , pongFile :: B.ByteString -- every time a pong is send
-    , rawFile :: B.ByteString
+    , eventFile :: File -- everything
+    , pongFile :: File -- every time a pong is send
+    , rawFile :: File
     }
 
-type Targets = [Target]
+type File = B.ByteString
+
+addrLens :: L.Lens Connection String
+addrLens = L.lens addr (\x s -> s { addr = x })
+nickLens :: L.Lens Connection B.ByteString
+nickLens = L.lens nick (\x s -> s { nick = x })
+targetsLens :: L.Lens Connection Targets
+targetsLens = L.lens targets (\x s -> s { targets = x })
+targetLens :: Int -> L.Lens Connection (Maybe Target)
+targetLens k = L.intMapLens k . targetsLens
+sockLens :: L.Lens Connection N.Socket
+sockLens = L.lens sock (\x s -> s { sock = x })
+eventLens :: L.Lens Connection File
+eventLens = L.lens eventFile (\x s -> s { eventFile = x })
+pongLens :: L.Lens Connection File
+pongLens = L.lens pongFile (\x s -> s { pongFile = x })
+rawLens :: L.Lens Connection File
+rawLens = L.lens rawFile (\x s -> s { rawFile = x })
+
+type Targets = IntMap Target -- change to (IntMap Target)
 
 -- findTag 
 -- findTarget
@@ -97,6 +123,17 @@ data Target = Target
     , users :: [String] 
     , text :: R.Rope
     } deriving (Show, Eq)
+
+tagLens :: L.Lens Target Int
+tagLens = L.lens tag (\x s -> s { tag = x })
+toLens :: L.Lens Target To
+toLens = L.lens to (\x s -> s { to = x })
+nameLens :: L.Lens Target String
+nameLens = L.lens name (\x s -> s { name = x })
+usersLens :: L.Lens Target [String]
+usersLens = L.lens users (\x s -> s { users = x })
+textLens :: L.Lens Target R.Rope
+textLens = L.lens text (\x s -> s { text = x })
 
 data To = TChannel | TUser
   deriving (Show, Read, Eq)

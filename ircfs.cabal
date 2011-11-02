@@ -26,7 +26,8 @@ library
     exposed-modules:    Network.IRC.Message
     build-depends: base, bytestring >= 0.9, attoparsec, HFuse, unix,
                     filepath, network, enumerator, network-enumerator,
-                    transformers, cmdargs, attoparsec-enumerator, rope, mtl
+                    transformers, cmdargs, attoparsec-enumerator, rope, mtl,
+                    data-lens, containers
 
 executable ircfs
     main-is:            Main.hs
