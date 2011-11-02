@@ -1,6 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import Prelude hiding ((.), id)
+import Control.Category
+import qualified Data.Lens.Common as L
 import Control.Applicative
 import qualified Data.ByteString.Char8 as B
 import Foreign.C.Error
@@ -20,7 +23,8 @@ import Data.Attoparsec.Enumerator as A
 import qualified Network.Socket.Enumerator as E
 import qualified Data.Enumerator as E hiding (drop)
 import qualified Data.Enumerator.List as EL
-import Control.Monad.State (get, put)
+import Control.Monad.State (get, put, modify)
+import Data.Monoid
 
 import qualified Network.Socket as N hiding (recv)
 import qualified Network.Socket.ByteString  as N (recv, sendAll)
@@ -45,41 +49,17 @@ processFuseRequests ircoutc st (Req t) =
 processTmsg :: IrcOut -> Tmsg -> Ircfs Rmsg
 -- process Tread
 processTmsg _ (Tread "/nick" byteCount offset) = do
-  st <- get
-  let r = Rread
-        . B.take (fromIntegral byteCount) 
-        . B.drop (fromIntegral offset)
-        . nick 
-        . connection 
-        $ st
-  return r
+  return . Rread . B.take (fromIntegral byteCount) 
+        . B.drop (fromIntegral offset) . nick . connection =<< get
 processTmsg _ (Tread "/pong" byteCount offset) = do
-  st <- get
-  let r = Rread
-        . B.take (fromIntegral byteCount) 
-        . B.drop (fromIntegral offset)
-        . pongFile 
-        . connection 
-        $ st
-  return r
+  return . Rread . B.take (fromIntegral byteCount) 
+        . B.drop (fromIntegral offset) . pongFile . connection =<< get
 processTmsg _ (Tread "/raw" byteCount offset) = do
-  st <- get
-  let r = Rread
-        . B.take (fromIntegral byteCount) 
-        . B.drop (fromIntegral offset)
-        . rawFile 
-        . connection 
-        $ st
-  return r
-processTmsg _ (Tread "/event" byteCount offset) = do
-  st <- get
-  let r = Rread
-        . B.take (fromIntegral byteCount) 
-        . B.drop (fromIntegral offset)
-        . eventFile 
-        . connection 
-        $ st
-  return r
+  return . Rread . B.take (fromIntegral byteCount) 
+        . B.drop (fromIntegral offset) . rawFile . connection =<< get
+processTmsg _ (Tread "/event" byteCount offset) =
+  return . Rread . B.take (fromIntegral byteCount) 
+        . B.drop (fromIntegral offset) . eventFile . connection =<< get
 processTmsg _ (Tread {}) = return Rerror
 
 -- process Twrite
@@ -95,32 +75,14 @@ processTmsg ircoutc (Twrite "/ctl" s offset) = do
   let r = Rwrite . fromIntegral . B.length $ s
   return r
 processTmsg ircoutc (Twrite "/event" s offset) = do
-  st <- get
-  -- XXX
-  let c = connection st
-  let c' = c { eventFile = eventFile c `B.append` s `B.append` "\n" }
-  let st' = st {connection = c' }
-  put st'
-  let r = Rwrite . fromIntegral . B.length $ s
-  return r
+  modify $ L.modL (eventLens.connectionLens) (`B.append` s)
+  return . Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (Twrite "/pong" s offset) = do
-  st <- get
-  -- XXX
-  let c = connection st
-  let c' = c { pongFile = pongFile c `B.append` s `B.append` "\n" }
-  let st' = st {connection = c' }
-  put st'
-  let r = Rwrite . fromIntegral . B.length $ s
-  return r
+  modify $ L.modL (pongLens.connectionLens) (`B.append` s)
+  return . Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (Twrite "/raw" s offset) = do
-  st <- get
-  -- XXX
-  let c = connection st
-  let c' = c { rawFile = rawFile c `B.append` s }
-  let st' = st {connection = c' }
-  put st'
-  let r = Rwrite . fromIntegral . B.length $ s
-  return r
+  modify $ L.modL (rawLens.connectionLens) (`B.append` s)
+  return . Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (Twrite {}) = return Rerror
 
 -- process Topen
@@ -198,9 +160,9 @@ fsInit fsReq cfg = do
   let st = IrcfsState 
             { connection = 
                       Connection
-                      { addr = O.addr cfg
+                      { addr = B.pack . O.addr $ cfg
                       , nick = B.pack . O.nick $ cfg
-                      , targets = []
+                      , targets = mempty
                       , sock = sock
                       , eventFile = ""
                       , pongFile = ""
