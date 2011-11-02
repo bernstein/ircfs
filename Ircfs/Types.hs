@@ -76,8 +76,8 @@ data Qreq = Qroot
 data Connection = 
     NotConnected
   | Connection
-    { addr :: String
-    , nick :: B.ByteString
+    { addr :: File
+    , nick :: File
     --, lnick :: String
     , targets :: Targets -- M.Map Int Target
     , sock :: N.Socket
@@ -91,9 +91,9 @@ data Connection =
 
 type File = B.ByteString
 
-addrLens :: L.Lens Connection String
+addrLens :: L.Lens Connection File
 addrLens = L.lens addr (\x s -> s { addr = x })
-nickLens :: L.Lens Connection B.ByteString
+nickLens :: L.Lens Connection File
 nickLens = L.lens nick (\x s -> s { nick = x })
 targetsLens :: L.Lens Connection Targets
 targetsLens = L.lens targets (\x s -> s { targets = x })
