@@ -8,12 +8,13 @@ import qualified Network.Socket.ByteString  as N (recv, sendAll)
 import qualified Network.Socket.Enumerator as E
 import qualified Data.Enumerator as E hiding (drop)
 import qualified Data.Enumerator.List as EL
+import qualified Data.ByteString.Char8 as B
 import Data.Attoparsec as A
 import Data.Attoparsec.Enumerator as A
 
 import qualified Network.IRC.Message as I
 
-getSocket :: String -> Int -> IO Socket
+getSocket :: String -> Int -> IO N.Socket
 getSocket host port = do
   addrinfos <- N.getAddrInfo Nothing (Just host) (Just $ show port)
   let serveraddr = head addrinfos
