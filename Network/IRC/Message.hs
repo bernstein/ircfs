@@ -285,5 +285,5 @@ prefixToByteString (PrefixNick n (Just u) Nothing) =
 prefixToByteString (PrefixNick n Nothing (Just h)) =
   ":" `B.append` n `B.append` "@" `B.append` h
 prefixToByteString (PrefixNick n (Just u) (Just h)) =
-  ":" `B.append` n `B.append` "!" `B.append` "@" `B.append` h
+  ":" `B.append` n `B.append` "!" `B.append` u `B.append` "@" `B.append` h
 
