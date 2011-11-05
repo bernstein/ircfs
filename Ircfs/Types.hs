@@ -57,17 +57,17 @@ instance Applicative Ircfs where
 -- |
 -- Kind of Files
 --
-data Qreq = Qroot
-          | Qrootctl
-          | Qevent
-          | Qraw
-          | Qnick
-          | Qpong
-          | Qdir
-          | Qctl
-          | Qname
-          | Qusers
-          | Qdata
+data Qreq = Qroot      -- "/"
+          | Qrootctl   -- "/ctl"
+          | Qevent     -- "/event"
+          | Qraw       -- "/raw"
+          | Qnick      -- "/nick"
+          | Qpong      -- "/pong"
+          | Qdir   { dirNr :: Int } -- "/n"
+          | Qctl   { dirNr :: Int } -- "/n/ctl"
+          | Qname  { dirNr :: Int } -- "/n/name"
+          | Qusers { dirNr :: Int } -- "/n/users"
+          | Qdata  { dirNr :: Int } -- "/n/data"
   deriving (Show, Read, Eq, Ord)
 
 -- |
@@ -121,7 +121,7 @@ type Targets = IntMap Target -- change to (IntMap Target)
 data Target = Target 
     { tag :: !Int
     , to :: To
-    , name :: String
+    , name :: File
     , users :: [String] 
     , text :: R.Rope
     } deriving (Show, Eq)
@@ -130,7 +130,7 @@ tagLens :: L.Lens Target Int
 tagLens = L.lens tag (\x s -> s { tag = x })
 toLens :: L.Lens Target To
 toLens = L.lens to (\x s -> s { to = x })
-nameLens :: L.Lens Target String
+nameLens :: L.Lens Target File
 nameLens = L.lens name (\x s -> s { name = x })
 usersLens :: L.Lens Target [String]
 usersLens = L.lens users (\x s -> s { users = x })
@@ -140,11 +140,8 @@ textLens = L.lens text (\x s -> s { text = x })
 data To = TChannel | TUser
   deriving (Show, Read, Eq)
 
-{-
-
-data IrcfsState = App
-  {
-    con :: Connection
-  } deriving (Show, Eq, Ord)
--} 
-
+-- data In  = FsRequest F.Request
+--          | Cmd CtlCommand
+--          | Irc I.Message
+--          | Shutdown
+--          deriving (Eq)
