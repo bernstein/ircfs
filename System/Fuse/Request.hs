@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, StandaloneDeriving #-}
 -- -----------------------------------------------------------------------------
 -- |
 -- Module      :  Filesystem.Fuse
@@ -25,6 +25,7 @@ import qualified Control.Concurrent as C
 
 -- like a self-addressed envelope (SAE)
 data Request = ReqRep Tmsg (C.MVar Rmsg) | Req Tmsg
+  deriving Eq
 
 data Tmsg = Tread !FilePath !S.ByteCount !S.FileOffset
           | Twrite !FilePath !B.ByteString !S.FileOffset 
@@ -32,6 +33,7 @@ data Tmsg = Tread !FilePath !S.ByteCount !S.FileOffset
           | Tstat !FilePath
           -- Twalk
   --deriving (Show, Read, Eq)
+  deriving (Show, Eq)
 
 data Rmsg = Rread !B.ByteString 
           | Rwrite !S.ByteCount
@@ -40,11 +42,17 @@ data Rmsg = Rread !B.ByteString
           -- Rwalk
           | Rerror
   -- deriving (Show, Read, Eq)
-
-
+  deriving (Show, Eq)
 
 data IrcfsFH = IrcfsFH
   deriving (Show,Read,Eq)
+
+deriving instance Eq OpenMode
+deriving instance Eq OpenFileFlags
+deriving instance Eq F.FileStat
+deriving instance Eq F.EntryType
+deriving instance Show OpenMode
+deriving instance Show OpenFileFlags
 
 fromRmsg :: Rmsg -> Either Errno B.ByteString
 fromRmsg (Rread s) = Right s
