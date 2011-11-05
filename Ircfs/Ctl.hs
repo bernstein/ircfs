@@ -30,6 +30,7 @@ data CtlCommand =
   | Op
   | Part { msg :: B.ByteString }
   | Ping { msg :: B.ByteString } 
+  | Pong { msg :: B.ByteString } 
   | Privmsg { msgtarget :: B.ByteString, msg :: B.ByteString }
   | Quit { m :: B.ByteString }
   | Reconnect
@@ -57,6 +58,7 @@ parseCtl = awayCmd
       <|> nCmd
       <|> nickCmd
       <|> partCmd
+      <|> pongCmd
       <|> quitCmd
       -- <|> removeCmd
       <|> whoCmd
@@ -73,6 +75,7 @@ namesCmd     = Names <$> (A8.string "names" *> I.space *> remainder)
 nCmd         = Names <$> (A8.string "n" *> I.space *> remainder)
 nickCmd      = Nick <$> (A8.string "nick" *> I.space *> I.nick)
 partCmd      = Part <$> (A8.string "part" *> I.space *> remainder)
+pongCmd      = Pong <$> (A8.string "pong" *> I.space *> remainder)
 quitCmd      = Quit <$> (A8.string "quit" *> I.space *> remainder)
 --removeCmd    = Remove <$> (A8.string "remove" *> I.space *> remainder)
 whoCmd       = Who  <$> (A8.string "whois" *> I.space *> I.nick)
@@ -94,6 +97,7 @@ toMessage (Join s) = I.Message Nothing I.JOIN [s]
 toMessage (Names s) = I.Message Nothing I.NAMES [s]
 toMessage (Nick s) = I.Message Nothing I.NICK [s]
 toMessage (Part s) = I.Message Nothing I.PART [s]
+toMessage (Pong s) = I.Message Nothing I.PONG [s]
 toMessage (Privmsg t s) = I.Message Nothing I.PRIVMSG [t,B.cons 58 s]
 toMessage (Quit s) = I.Message Nothing I.QUIT [s]
 --toMessage (Remove s) = I.Message Nothing I.REMOVE [s]
