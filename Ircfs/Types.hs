@@ -128,6 +128,12 @@ rawLens = L.lens rawFile (\x s -> s { rawFile = x })
 nextDirNamesLens :: L.Lens Connection [Int]
 nextDirNamesLens = L.lens nextDirNames (\x s -> s { nextDirNames = x})
 
+targetMapLens :: L.Lens Connection (M.Map B.ByteString Int)
+targetMapLens = L.lens targetMap (\x s -> s { targetMap = x})
+
+targetMapLens' :: B.ByteString -> L.Lens Connection (Maybe Int)
+targetMapLens' s = L.mapLens s . targetMapLens
+
 type Targets = IntMap Target -- change to (IntMap Target)
 
 -- findTag 
