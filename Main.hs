@@ -40,24 +40,19 @@ import Ircfs.Filesystem
 import qualified Ircfs.CmdLine as O
 import System.Fuse.Request
 
-data In  = Fs  Request
-         | Cmd CtlCommand
-         | Irc I.Message
-         | Shutdown
-         -- deriving (Eq)
-
 --newtype IrcOut = IrcOut { unIrcOut :: C.Chan I.Message }
 newtype IrcOut = IrcOut { unIrcOut :: C.Chan B.ByteString }
 newtype IrcIn  = IrcIn { unIrcIn :: C.Chan I.Message }
 
--- process :: Enumeratee In I.Message IO a
+-- process :: Enumeratee Request I.Message IO a
 
---process :: IrcfsState -> In -> IO (Maybe B.ByteString, IrcfsState)
---process :: IrcOut -> IrcfsState -> In -> IO IrcfsState
-process :: IrcOut -> In -> Ircfs ()
+--process :: IrcfsState -> Request -> IO (Maybe B.ByteString, IrcfsState)
+--process :: IrcOut -> IrcfsState -> Request -> IO IrcfsState
+process :: IrcOut -> Request -> Ircfs ()
 -- process file system requests
-process ircoutc (Fs (ReqRep t m)) = processTmsg ircoutc t >>= (io . C.putMVar m)
-process ircoutc (Fs (Req t)) = processTmsg ircoutc t >> return ()
+process ircoutc (ReqRep t m) = processTmsg ircoutc t >>= (io . C.putMVar m)
+process ircoutc (Req t) = processTmsg ircoutc t >> return ()
+process _ _ = return ()
 
 -- /event -- new x #channel, new y user, del x #channel
 --
@@ -78,43 +73,6 @@ process ircoutc (Fs (Req t)) = processTmsg ircoutc t >> return ()
 --doIRC fsReq ircoutc (I.Message p I.TOPIC ps) = undefined
 --doIRC fsReq ircoutc (I.Message p I.INVITE ps) = undefined
 -- process incoming irc messages
-process ircoutc (Irc m@(I.Message _ I.PING ps)) = do
-    stamp <- timeStamp
-    let cmd = "pong " `B.append` head ps `B.append` "\n"
-        off = fromIntegral . B.length $ cmd
-        log = stamp `B.append` " " `B.append` cmd
-        s = I.toByteString m
-        off2 = fromIntegral . B.length $ s
-    processTmsg ircoutc (Twrite "/ctl" cmd off)
-    processTmsg ircoutc (Twrite "/pong" log off)
-    writeRaw s off2
-process ircoutc (Irc m@(I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_))) = do
-    st <- get
-    if n == nick (connection st)
-      then do
-        let log = "your nick changed\n"
-            off = fromIntegral . B.length $ log
-        processTmsg ircoutc (Twrite "/event" log off) >> return ()
-        processTmsg ircoutc (Twrite "/nick" new (fromIntegral . B.length $ new))
-        return ()
-      else do
-        let log = "someones nick changed\n"
-            off = fromIntegral . B.length $ log
-        processTmsg ircoutc (Twrite "/event" log off)
-        return ()
-    let s = I.toByteString m
-        off2 = fromIntegral . B.length $ s
-    writeRaw s off2
-
-process ircoutc (Irc m@(I.Message _ I.ERROR ps)) =
-    let s = I.toByteString m
-        off = fromIntegral . B.length $ s
-    in writeRaw s off
-process ircoutc (Irc m) =
-    let s = I.toByteString m
-        off = fromIntegral . B.length $ s
-    in writeRaw s off
-process _ _ = return ()
 
 processTmsg :: IrcOut -> Tmsg -> Ircfs Rmsg
 -- process Tread
@@ -160,7 +118,7 @@ processTmsg ircoutc (Twrite "/raw" s offset) = do
   return . Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (Twrite "/ircin" s offset) = do
   let m = A.maybeResult $ A.feed (A.parse I.message s) "\n"
-  maybe (return ()) (process ircoutc . Irc) m
+  maybe (return ()) (processIrc ircoutc) m
   modify $ L.modL (rawLens.connectionLens) (`B.append` s)
   return . Rwrite . fromIntegral . B.length $ s
 processTmsg _ (Twrite {}) = return Rerror
@@ -170,6 +128,43 @@ processTmsg _ (Topen p _ _) = return Ropen
 
 -- process Tstat
 processTmsg _ (Tstat p) = maybe Rerror Rstat . (`stat` p) <$> get
+
+processIrc :: IrcOut -> I.Message -> Ircfs ()
+processIrc ircoutc m@(I.Message _ I.PING ps) = do
+    stamp <- timeStamp
+    let cmd = "pong " `B.append` head ps `B.append` "\n"
+        off = fromIntegral . B.length $ cmd
+        log = stamp `B.append` " " `B.append` cmd
+        s = I.toByteString m
+        off2 = fromIntegral . B.length $ s
+    processTmsg ircoutc (Twrite "/ctl" cmd off)
+    processTmsg ircoutc (Twrite "/pong" log off)
+    writeRaw s off2
+processIrc ircoutc m@(I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
+    st <- get
+    if n == nick (connection st)
+      then do
+        let log = "your nick changed\n"
+            off = fromIntegral . B.length $ log
+        processTmsg ircoutc (Twrite "/event" log off) >> return ()
+        processTmsg ircoutc (Twrite "/nick" new (fromIntegral . B.length $ new))
+        return ()
+      else do
+        let log = "someones nick changed\n"
+            off = fromIntegral . B.length $ log
+        processTmsg ircoutc (Twrite "/event" log off)
+        return ()
+    let s = I.toByteString m
+        off2 = fromIntegral . B.length $ s
+    writeRaw s off2
+processIrc ircoutc m@(I.Message _ I.ERROR ps) =
+    let s = I.toByteString m
+        off = fromIntegral . B.length $ s
+    in writeRaw s off
+processIrc ircoutc m =
+    let s = I.toByteString m
+        off = fromIntegral . B.length $ s
+    in writeRaw s off
 
 writeRaw :: B.ByteString -> Int -> Ircfs ()
 writeRaw s off = modify $ L.modL (rawLens.connectionLens) (`B.append` s)
@@ -200,7 +195,7 @@ ircWriter s ircoutc = do
 
 fsInit :: C.Chan Request -> O.Config -> IO ()
 fsInit fsReq cfg = do
-  inc <- C.newChan :: IO (C.Chan In)
+  inc <- C.newChan :: IO (C.Chan Request)
   ircoutc <- IrcOut <$> C.newChan
   s <- getSocket (O.addr cfg) (read (O.port cfg))
 
@@ -227,10 +222,7 @@ fsInit fsReq cfg = do
   _ <- C.forkIO $ ircWriter s ircoutc
 
   rs <- C.getChanContents fsReq
-  _ <- C.forkIO $ foldM_ (\c r -> C.writeChan c (Fs r) >> return c) inc rs
-
-  is <- C.getChanContents inc
-  _ <- C.forkIO $ runIrcfs st (mapM_ (process ircoutc) is) >> return ()
+  _ <- C.forkIO $ runIrcfs st (mapM_ (process ircoutc) rs) >> return ()
   return ()
 
 fsDestroy :: IO ()
