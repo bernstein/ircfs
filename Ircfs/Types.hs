@@ -145,9 +145,11 @@ type Targets = IntMap Target -- change to (IntMap Target)
 data Target = Target 
     { tag :: !Int
     , to :: To
-    , name :: File
-    , users :: [String] 
-    , text :: R.Rope
+    , targetName :: File
+    -- , users :: [String] 
+    , users :: File
+    --, text :: R.Rope
+    , text :: File
     } deriving (Show, Eq)
 
 tagLens :: L.Lens Target Int
@@ -155,10 +157,12 @@ tagLens = L.lens tag (\x s -> s { tag = x })
 toLens :: L.Lens Target To
 toLens = L.lens to (\x s -> s { to = x })
 nameLens :: L.Lens Target File
-nameLens = L.lens name (\x s -> s { name = x })
-usersLens :: L.Lens Target [String]
+nameLens = L.lens targetName (\x s -> s { targetName = x })
+--usersLens :: L.Lens Target [String]
+usersLens :: L.Lens Target File
 usersLens = L.lens users (\x s -> s { users = x })
-textLens :: L.Lens Target R.Rope
+--textLens :: L.Lens Target R.Rope
+textLens :: L.Lens Target File
 textLens = L.lens text (\x s -> s { text = x })
 
 data To = TChannel | TUser

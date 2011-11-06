@@ -3,14 +3,15 @@ module Ircfs.Filesystem
 where
 
 import Control.Applicative
-import Prelude hiding ((.), id)
+import Prelude hiding ((.), id, read)
+import qualified Prelude as P
 import Control.Category
 import qualified Data.Lens.Common as L
 import qualified System.Fuse as F
 import qualified System.Fuse.Request as F
-import System.Posix.Files
-import System.Posix.Types
+import qualified System.Posix.Types as S
 import System.FilePath
+import Data.Monoid
 import Data.Char (isNumber)
 import qualified Data.ByteString.Char8 as B
 import Ircfs.Types
@@ -41,12 +42,12 @@ fromFilePath p
                  let ds = splitDirectories p
                      ok = all isNumber x
                      x = last ds
-                 in if ok then (Just . Qdir . read) x else Nothing
+                 in if ok then (Just . Qdir . P.read) x else Nothing
   | 3 == length (splitDirectories p) =
                  let ds = splitDirectories p
                      ok = all isNumber x
                      x = head (tail ds)
-                 in if ok then fileToQreq (read x) (last ds) else Nothing
+                 in if ok then fileToQreq (P.read x) (last ds) else Nothing
   | otherwise = Nothing
 
 rootDirFiles :: [Qreq]
@@ -78,7 +79,7 @@ showFile (Qdata _)  = "data"
 showFilepath :: Qreq -> FilePath
 showFilepath = B.unpack . showFile
 
-filemode :: Qreq -> FileMode
+filemode :: Qreq -> S.FileMode
 filemode Qroot    = 0o555 -- DIR
 filemode Qrootctl = 0o222
 filemode Qevent   = 0o444
@@ -100,9 +101,8 @@ fileStat q       = F.defaultFileStat { F.statFileMode = filemode q }
 stat :: IrcfsState -> FilePath -> Maybe F.FileStat
 stat (IrcfsState NotConnected) _ = Nothing
 stat (IrcfsState con) "/nick" =
-  let s = (fileStat Qnick) { F.statFileSize = 1+size }
-      size = fromIntegral . B.length . nick $ con
-  in  Just s
+  let size = fromIntegral . B.length . nick $ con
+  in  Just $ (fileStat Qnick) { F.statFileSize = 1+size }
 stat (IrcfsState con) "/event" =
   let size = fromIntegral . B.length . eventFile $ con
   in  Just $ (fileStat Qevent) { F.statFileSize = size }
@@ -113,8 +113,38 @@ stat (IrcfsState con) "/pong" =
   let size = fromIntegral . B.length . pongFile $ con
   in  Just $ (fileStat Qpong) { F.statFileSize = size }
 stat (IrcfsState con) "/0/name" =
-  let s = (fileStat (Qname 0)) { F.statFileSize = 1+size }
-      size = fromIntegral . B.length . addr $ con
-  in  Just s
+  let size = fromIntegral . B.length . addr $ con
+  in  Just $ (fileStat (Qname 0)) { F.statFileSize = 1+size }
 stat (IrcfsState con) p = fileStat <$> fromFilePath p
+
+readF :: IrcfsState -> FilePath -> S.ByteCount -> S.FileOffset -> Maybe B.ByteString
+readF s@(IrcfsState con) p bc off = cut <$> (read' s =<< fromFilePath p)
+  where cut = B.take (fromIntegral bc) . B.drop (fromIntegral off)
+
+read' :: IrcfsState -> Qreq -> Maybe B.ByteString
+read' (IrcfsState con) Qroot      = Nothing
+read' (IrcfsState con) Qrootctl   = Just mempty
+read' (IrcfsState con) Qevent     = Just $ eventFile con
+read' (IrcfsState con) Qraw       = Just $ rawFile con
+read' (IrcfsState con) Qnick      = Just $ (B.append (nick con) "\n")
+read' (IrcfsState con) Qpong      = Just $ pongFile con
+read' (IrcfsState con) Qdir {}    = Nothing
+read' (IrcfsState con) Qctl {}    = Just mempty
+read' (IrcfsState con) (Qname 0)  = Just . (`B.append` "\n") . addr $ con
+read' (IrcfsState con) (Qname k)  = 
+  ((`B.append` "\n") . targetName) <$> L.getL (targetLens k) con
+read' (IrcfsState con) (Qusers 0) = Just mempty
+read' (IrcfsState con) (Qusers k) = users <$> L.getL (targetLens k) con
+read' (IrcfsState con) (Qdata 0)  = Just mempty
+read' (IrcfsState con) (Qdata k)  = text <$> L.getL (targetLens k) con
+
+{-
+- uses readHelper
+statHelper :: Qreq -> Connection -> Int
+statHelper (Qname k) con = targetName con
+-}
+
+-- might return empty string, if filepath is unknown 
+-- readHelper :: Qreq -> (Connection -> B.ByteString)
+-- readHelper (Qname k) con =
 

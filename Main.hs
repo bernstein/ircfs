@@ -17,7 +17,7 @@ import qualified Data.Time as T
 import qualified Data.Time.Format as T
 import qualified System.Fuse as F
 import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad (foldM_, foldM ,mapM_)
+import Control.Monad (foldM_, foldM, mapM_, when)
 import Data.Maybe (maybe)
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
@@ -57,24 +57,9 @@ process _ _ = return ()
 -- | Process incoming filesystem requests.
 processTmsg :: IrcOut -> Tmsg -> Ircfs Rmsg
 -- process Tread
-processTmsg _ (Tread "/nick" byteCount offset) =
-  return . Rread . B.take (fromIntegral byteCount) 
-        . B.drop (fromIntegral offset) . (`B.append` "\n") . nick
-        . connection =<< get
-processTmsg _ (Tread "/pong" byteCount offset) =
-  return . Rread . B.take (fromIntegral byteCount)
-        . B.drop (fromIntegral offset) . pongFile . connection =<< get
-processTmsg _ (Tread "/raw" byteCount offset) =
-  return . Rread . B.take (fromIntegral byteCount) 
-        . B.drop (fromIntegral offset) . rawFile . connection =<< get
-processTmsg _ (Tread "/event" byteCount offset) =
-  return . Rread . B.take (fromIntegral byteCount) 
-        . B.drop (fromIntegral offset) . eventFile . connection =<< get
-processTmsg _ (Tread "/ctl" _ _) = return . Rread $ mempty
-processTmsg _ (Tread "/0/name" byteCount offset) =
-  return . Rread . B.take (fromIntegral byteCount)
-        . B.drop (fromIntegral offset) . (`B.append` "\n") . addr
-        . connection =<< get
+processTmsg _ (Tread p bc off) = do
+  st <- get
+  maybe (return Rerror) (return . Rread) (readF st p bc off)
 processTmsg _ (Tread {}) = return Rerror
 
 -- process Treaddir
@@ -121,7 +106,7 @@ processTmsg ircoutc (Twrite "/ircin" s offset) = do
 processTmsg _ (Twrite {}) = return Rerror
 
 -- process Topen
-processTmsg _ (Topen p _ _) = return Ropen
+processTmsg _ (Topen _ _ _) = return Ropen
 
 -- process Tstat
 processTmsg _ (Tstat p) = maybe Rerror Rstat . (`stat` p) <$> get
@@ -133,7 +118,7 @@ processIrc ircoutc (I.Message _ I.PING ps) = do
     let cmd = "pong " `B.append` head ps `B.append` "\n"
         off = fromIntegral . B.length $ cmd
         log = stamp `B.append` " " `B.append` cmd
-    processTmsg ircoutc (Twrite "/ctl" cmd off)
+    _ <- processTmsg ircoutc (Twrite "/ctl" cmd off)
     appendPong log
 processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
   yourNick <- (nick.connection) <$> get
@@ -145,25 +130,29 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
       appendEvent $ n `B.append` " nick changed to " 
                       `B.append` new 
                       `B.append` "\n"
-processIrc _ (I.Message p I.JOIN (c:_)) = do
-  k <- nextDirName
-  modify $ L.setL (targetLens k.connectionLens) 
-                  (Just (Target k TChannel c [] mempty))
-  modify $ L.setL (targetMapLens' c.connectionLens) (Just k)
-  let s = B.pack $ "new " ++ show k ++ " "
-  appendEvent $ s `B.append` c `B.append` "\n"
-processIrc _ (I.Message p I.PART (c:_)) = do
-  m <- L.getL (targetMapLens' c.connectionLens) <$> get
-  maybe (return ()) (\k -> do
-      modify (L.setL (targetLens k.connectionLens) Nothing)
-      modify (L.setL (targetMapLens' c.connectionLens) Nothing)
-      freeDirName k
-      let s = B.pack $ "new " ++ show k ++ " "
-      appendEvent (s `B.append` c `B.append` "\n")
-    ) m
-processIrc _ m@(I.Message _ I.ERROR ps) =
+processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.JOIN (c:_)) = do
+  yourNick <- (nick.connection) <$> get
+  when (n == yourNick) $ do
+    k <- nextDirName
+    modify $ L.setL (targetLens k.connectionLens) 
+                    (Just (Target k TChannel c mempty mempty))
+    modify $ L.setL (targetMapLens' c.connectionLens) (Just k)
+    let s = B.pack $ "new " ++ show k ++ " "
+    appendEvent $ s `B.append` c `B.append` "\n"
+processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PART (c:_)) = do
+  yourNick <- (nick.connection) <$> get
+  when (n == yourNick) $ do
+    m <- L.getL (targetMapLens' c.connectionLens) <$> get
+    maybe (return ()) (\k -> do
+        modify (L.setL (targetLens k.connectionLens) Nothing)
+        modify (L.setL (targetMapLens' c.connectionLens) Nothing)
+        freeDirName k
+        let s = B.pack $ "del " ++ show k ++ " "
+        appendEvent (s `B.append` c `B.append` "\n")
+      ) m
+processIrc _ m@(I.Message _ I.ERROR _) =
   appendEvent ("error " `B.append` (I.toByteString m) `B.append` "\n")
-processIrc _ m = return ()
+processIrc _ _ = return ()
 
 appendRaw :: B.ByteString -> Ircfs ()
 appendRaw s = modify $ L.modL (rawLens.connectionLens) (`B.append` s)
@@ -187,9 +176,9 @@ freeDirName :: Int -> Ircfs ()
 freeDirName = modify . L.modL (nextDirNamesLens . connectionLens) . (:)
 
 chanToIter2 :: C.Chan a -> E.Iteratee a IO ()
-chanToIter2 chan = go
+chanToIter2 c = go
   where
-    go = EL.head >>= maybe go (\x -> liftIO (C.writeChan chan x) >> go)
+    go = EL.head >>= maybe go (\x -> liftIO (C.writeChan c x) >> go)
 
 -- | Listens on the sockets, writes received messages to ircinc
 ircReader :: C.Chan Request -> N.Socket -> IO ()
@@ -202,10 +191,7 @@ ircWriter s out = mapM_ (N.sendAll s) =<< C.getChanContents (unIrcOut out)
 -- | Initialize the filesystem.
 fsInit :: C.Chan Request -> O.Config -> IO ()
 fsInit fsReq cfg = do
-  inc <- C.newChan :: IO (C.Chan Request)
-  ircoutc <- IrcOut <$> C.newChan
   s <- getSocket (O.addr cfg) (read (O.port cfg))
-
   let st = IrcfsState 
             { connection = 
                       Connection
@@ -219,7 +205,6 @@ fsInit fsReq cfg = do
                       , nextDirNames = [1..100]
                       , targetMap = mempty
                       }
-            -- , fsreq = fsReq 
             }
 
   _ <- C.forkIO $ ircReader fsReq s
@@ -228,6 +213,7 @@ fsInit fsReq cfg = do
   N.sendAll s nickMsg
   let userMsg = B.pack $ "USER none 0 * :" ++ O.nick cfg ++"\r\n"
   N.sendAll s userMsg
+  ircoutc <- IrcOut <$> C.newChan
   _ <- C.forkIO $ ircWriter s ircoutc
 
   rs <- C.getChanContents fsReq
