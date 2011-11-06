@@ -14,6 +14,19 @@
 --------------------------------------------------------------------------------
 
 module Ircfs.Types
+-- IrcfsState
+-- io
+-- runIrcfs
+-- Ircfs
+-- Qreq
+-- Connection
+-- File
+-- Target
+-- Targets
+--
+-- connectionLens
+-- addrLens
+-- nickLens
 where
 
 import Prelude hiding ((.), id)
