@@ -100,6 +100,7 @@ data Connection =
     , eventFile :: File -- everything
     , pongFile :: File -- every time a pong is send
     , rawFile :: File
+    , nextDirNames :: [Int]
     }
 
 type File = B.ByteString
@@ -122,6 +123,8 @@ pongLens :: L.Lens Connection File
 pongLens = L.lens pongFile (\x s -> s { pongFile = x })
 rawLens :: L.Lens Connection File
 rawLens = L.lens rawFile (\x s -> s { rawFile = x })
+nextDirNamesLens :: L.Lens Connection [Int]
+nextDirNamesLens = L.lens nextDirNames (\x s -> s { nextDirNames = x})
 
 type Targets = IntMap Target -- change to (IntMap Target)
 
