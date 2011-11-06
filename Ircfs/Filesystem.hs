@@ -108,12 +108,12 @@ stat (IrcfsState con) "/event" =
   in  Just $ (fileStat Qevent) { F.statFileSize = size }
 stat (IrcfsState con) "/raw" =
   let size = fromIntegral . B.length . rawFile $ con
-  in  Just $ (fileStat Qevent) { F.statFileSize = size }
+  in  Just $ (fileStat Qraw) { F.statFileSize = size }
 stat (IrcfsState con) "/pong" =
   let size = fromIntegral . B.length . pongFile $ con
-  in  Just $ (fileStat Qevent) { F.statFileSize = size }
+  in  Just $ (fileStat Qpong) { F.statFileSize = size }
 stat (IrcfsState con) "/0/name" =
-  let s = (fileStat Qnick) { F.statFileSize = 1+size }
+  let s = (fileStat (Qname 0)) { F.statFileSize = 1+size }
       size = fromIntegral . B.length . addr $ con
   in  Just s
 stat (IrcfsState con) p = fileStat <$> fromFilePath p
