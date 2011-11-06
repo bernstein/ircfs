@@ -93,6 +93,9 @@ processTmsg _ (Tread "/0/name" byteCount offset) = do
   return . Rread . B.take (fromIntegral byteCount)
         . B.drop (fromIntegral offset) . (`B.append` "\n"). addr
         . connection =<< get
+processTmsg _ (Tread {}) = return Rerror
+
+-- process Treaddir
 processTmsg _ (Treaddir "/") = do
   ks <- (IM.keys . targets . connection) <$> get
   let ds = [(".", defaultDirStat) ,
@@ -106,8 +109,6 @@ processTmsg _ (Treaddir _) = do
   let ds = [(".", defaultDirStat), ("..",defaultDirStat)] ++ subDir
       subDir = zip (map showFilepath subDirFiles) (map fileStat subDirFiles)
   return (Rreaddir ds)
-
-processTmsg _ (Tread {}) = return Rerror
 
 -- process Twrite
 processTmsg ircoutc (Twrite "/ctl" s offset) = do
@@ -143,6 +144,7 @@ processTmsg _ (Topen p _ _) = return Ropen
 -- process Tstat
 processTmsg _ (Tstat p) = maybe Rerror Rstat . (`stat` p) <$> get
 
+-- | Process incommint irc messages.
 processIrc :: IrcOut -> I.Message -> Ircfs ()
 processIrc ircoutc (I.Message _ I.PING ps) = do
     stamp <- timeStamp
@@ -164,14 +166,14 @@ processIrc _ (I.Message p I.JOIN (c:ps)) = do
   k <- nextDirName
   modify $ L.setL (targetLens k.connectionLens) (Just (Target k TChannel c [] mempty))
   modify $ L.setL (targetMapLens' c.connectionLens) (Just k)
-  appendEvent . B.pack $ "new " ++ show k ++ "\n"
+  appendEvent . B.pack $ "new " ++ show k ++ " " ++ show c ++ "\n"
 processIrc _ (I.Message p I.PART (c:ps)) = do
   m <- L.getL (targetMapLens' c.connectionLens) <$> get
   maybe (return ()) (\k -> do
       modify (L.setL (targetLens k.connectionLens) Nothing)
       modify (L.setL (targetMapLens' c.connectionLens) Nothing)
       freeDirName k
-      appendEvent (B.pack ("del " ++ show k ++ "\n"))
+      appendEvent (B.pack ("del " ++ show k ++ " " ++ show c ++ "\n"))
     ) m
 processIrc _ m = return ()
 
