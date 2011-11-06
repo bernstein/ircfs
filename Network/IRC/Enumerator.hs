@@ -8,7 +8,10 @@ import qualified Network.Socket.ByteString  as N (recv, sendAll)
 import qualified Network.Socket.Enumerator as E
 import qualified Data.Enumerator as E hiding (drop)
 import qualified Data.Enumerator.List as EL
+import qualified Data.Enumerator.Binary as EB
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy as BL
+import Data.Word (Word8)
 import Data.Attoparsec as A
 import Data.Attoparsec.Enumerator as A
 
@@ -28,6 +31,9 @@ iterMessage = A.iterParser I.message
 
 messages :: Monad m => E.Enumeratee B.ByteString I.Message m a
 messages = E.sequence iterMessage
+
+irclines :: Monad m => E.Enumeratee B.ByteString B.ByteString m a
+irclines = EB.splitWhen (== 10) -- '\n' == chr 10
 
 {-
 catchParser :: Monad m => String -> Iteratee a m b -> Iteratee a m b
