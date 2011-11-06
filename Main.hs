@@ -28,6 +28,7 @@ import qualified Data.Enumerator as E hiding (drop)
 import qualified Data.Enumerator.List as EL
 import Control.Monad.State (get, put, modify)
 import Data.Monoid
+import qualified Data.IntMap as IM
 
 import qualified Network.Socket as N hiding (recv)
 import qualified Network.Socket.ByteString  as N (recv, sendAll)
@@ -92,12 +93,14 @@ processTmsg _ (Tread "/0/name" byteCount offset) = do
   return . Rread . B.take (fromIntegral byteCount)
         . B.drop (fromIntegral offset) . (`B.append` "\n"). addr
         . connection =<< get
-processTmsg _ (Treaddir "/") =
+processTmsg _ (Treaddir "/") = do
+  ks <- (IM.keys . targets . connection) <$> get
   let ds = [(".", defaultDirStat) ,
             ("..", defaultDirStat), 
-            ("0",defaultDirStat) ] ++ rootDir
+            ("0",defaultDirStat) ] ++ rootDir ++ subDirs
       rootDir = zip (map showFilepath rootDirFiles) (map fileStat rootDirFiles)
-  in return . Rreaddir $ ds
+      subDirs = map (\x -> (show x,defaultDirStat)) ks
+  return . Rreaddir $ ds
 processTmsg _ (Treaddir _) = do
   -- let m = fromFilePath p
   let ds = [(".", defaultDirStat), ("..",defaultDirStat)] ++ subDir
@@ -157,14 +160,19 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
       else
         appendEvent $ n `B.append` " nick changed to " `B.append` new `B.append` "\n"
 processIrc _ (I.Message _ I.ERROR ps) = return ()
-processIrc _ (I.Message p I.JOIN ps) = do
-  appendEvent "new 1\n"
-  modify $ L.setL (targetLens 1.connectionLens) (Just (Target 1 TChannel "#mediensysteme" [] mempty))
-  return ()
-processIrc _ (I.Message p I.PART ps) = do
-  appendEvent "del 1\n"
-  modify $ L.setL (targetLens 1.connectionLens) Nothing
-  return ()
+processIrc _ (I.Message p I.JOIN (c:ps)) = do
+  k <- nextDirName
+  modify $ L.setL (targetLens k.connectionLens) (Just (Target k TChannel c [] mempty))
+  modify $ L.setL (targetMapLens' c.connectionLens) (Just k)
+  appendEvent . B.pack $ "new " ++ show k ++ "\n"
+processIrc _ (I.Message p I.PART (c:ps)) = do
+  m <- L.getL (targetMapLens' c.connectionLens) <$> get
+  maybe (return ()) (\k -> do
+      modify (L.setL (targetLens k.connectionLens) Nothing)
+      modify (L.setL (targetMapLens' c.connectionLens) Nothing)
+      freeDirName k
+      appendEvent (B.pack ("del " ++ show k ++ "\n"))
+    ) m
 processIrc _ m = return ()
 
 appendRaw :: B.ByteString -> Ircfs ()
@@ -175,6 +183,15 @@ writeNick :: B.ByteString -> Ircfs ()
 writeNick = modify . L.modL (nickLens.connectionLens) . const
 appendPong :: B.ByteString -> Ircfs ()
 appendPong s = modify $ L.modL (pongLens.connectionLens) (`B.append` s)
+
+nextDirName :: Ircfs Int
+nextDirName = do
+  k <- (head . nextDirNames . connection) <$> get
+  modify $ L.modL (nextDirNamesLens . connectionLens) tail
+  return k
+
+freeDirName :: Int -> Ircfs ()
+freeDirName = modify . L.modL (nextDirNamesLens . connectionLens) . (:)
 
 chanToIter2 :: C.Chan a -> E.Iteratee a IO ()
 chanToIter2 chan = go
@@ -216,6 +233,8 @@ fsInit fsReq cfg = do
                       , eventFile = ""
                       , pongFile = ""
                       , rawFile = ""
+                      , nextDirNames = [1..100]
+                      , targetMap = mempty
                       }
             -- , fsreq = fsReq 
             }
@@ -277,5 +296,4 @@ writeMany_ :: C.Chan Request -> [B.ByteString] -> IO (C.Chan Request)
 writeMany_ fsReq xs = foldM write_ fsReq xs
   where write_ c x = let off = fromIntegral (B.length x)
                      in  fuseRequest_ c (Twrite "/ircin" x off) >> return c
-
 
