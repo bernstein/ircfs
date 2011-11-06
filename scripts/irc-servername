@@ -1,0 +1,2 @@
+#!/bin/bash
+cat $HOME/mnt/irc/freenode/0/name

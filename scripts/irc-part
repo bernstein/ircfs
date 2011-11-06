@@ -1,0 +1,4 @@
+#!/bin/bash
+
+echo part $@ > ${HOME}/mnt/irc/freenode/ctl
+

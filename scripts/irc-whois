@@ -1,0 +1,5 @@
+#!/bin/bash
+
+echo whois $@ > ${HOME}/mnt/irc/freenode/ctl
+sleep 0.1
+tail -n 2 $HOME/mnt/irc/freenode/raw

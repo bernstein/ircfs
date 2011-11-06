@@ -1,0 +1,4 @@
+#!/bin/bash
+
+echo join $@ > ${HOME}/mnt/irc/freenode/ctl
+
