@@ -50,34 +50,27 @@ newtype IrcIn  = IrcIn { unIrcIn :: C.Chan I.Message }
 --process :: IrcfsState -> Request -> IO (Maybe B.ByteString, IrcfsState)
 --process :: IrcOut -> IrcfsState -> Request -> IO IrcfsState
 process :: IrcOut -> Request -> Ircfs ()
--- process file system requests
 process ircoutc (ReqRep t m) = processTmsg ircoutc t >>= (io . C.putMVar m)
 process ircoutc (Req t) = processTmsg ircoutc t >> return ()
 process _ _ = return ()
 
--- /event -- new x #channel, new y user, del x #channel
---
-
--- ircoutc is actually not needed as an argument
--- process incoming irc messages
-
--- | Process incommint filesystem requests.
+-- | Process incoming filesystem requests.
 processTmsg :: IrcOut -> Tmsg -> Ircfs Rmsg
 -- process Tread
-processTmsg _ (Tread "/nick" byteCount offset) = do
+processTmsg _ (Tread "/nick" byteCount offset) =
   return . Rread . B.take (fromIntegral byteCount) 
         . B.drop (fromIntegral offset) . (`B.append` "\n") . nick
         . connection =<< get
-processTmsg _ (Tread "/pong" byteCount offset) = do
+processTmsg _ (Tread "/pong" byteCount offset) =
   return . Rread . B.take (fromIntegral byteCount)
         . B.drop (fromIntegral offset) . pongFile . connection =<< get
-processTmsg _ (Tread "/raw" byteCount offset) = do
+processTmsg _ (Tread "/raw" byteCount offset) =
   return . Rread . B.take (fromIntegral byteCount) 
         . B.drop (fromIntegral offset) . rawFile . connection =<< get
 processTmsg _ (Tread "/event" byteCount offset) =
   return . Rread . B.take (fromIntegral byteCount) 
         . B.drop (fromIntegral offset) . eventFile . connection =<< get
-processTmsg _ (Tread "/0/name" byteCount offset) = do
+processTmsg _ (Tread "/0/name" byteCount offset) =
   return . Rread . B.take (fromIntegral byteCount)
         . B.drop (fromIntegral offset) . (`B.append` "\n"). addr
         . connection =<< get
@@ -101,8 +94,10 @@ processTmsg _ (Treaddir _) = do
 -- process Twrite
 processTmsg ircoutc (Twrite "/ctl" s offset) = do
   -- Todo if a msg is longer than 512 then split it into chunks
-  maybe (return Rerror)
-        (\c -> processTmsg ircoutc (Twrite "/raw" (I.toByteString.toMessage $c) 0)) (A.maybeResult $ A.parse I.parseCtl s)
+  maybe 
+    (return Rerror)
+    (\c -> processTmsg ircoutc (Twrite "/raw" (I.toByteString.toMessage $c) 0)) 
+    (A.maybeResult $ A.parse I.parseCtl s)
   return . Rwrite . fromIntegral . B.length $ s
 processTmsg _ (Twrite "/event" s offset) = do
   modify $ L.modL (eventLens.connectionLens) (`B.append` s)
@@ -115,8 +110,6 @@ processTmsg _ (Twrite "/pong" s offset) = do
   return . Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (Twrite "/raw" s offset) = do
   appendRaw (">>>" `B.append` s)
-  -- XXX writes to /raw are special,
-  -- this part is the only reason processTmsg neds ircoutc
   io . C.writeChan (unIrcOut ircoutc) $ s
   return . Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (Twrite "/ircin" s offset) = do
@@ -142,20 +135,23 @@ processIrc ircoutc (I.Message _ I.PING ps) = do
     processTmsg ircoutc (Twrite "/ctl" cmd off)
     appendPong log
 processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
-    yourNick <- (nick.connection) <$> get
-    if n == yourNick
-      then do
-        appendEvent $ "your nick changed to " `B.append` new `B.append` "\n"
-        writeNick new
-      else
-        appendEvent $ n `B.append` " nick changed to " `B.append` new `B.append` "\n"
+  yourNick <- (nick.connection) <$> get
+  if n == yourNick
+    then do
+      appendEvent $ "your nick changed to " `B.append` new `B.append` "\n"
+      writeNick new
+    else
+      appendEvent $ n `B.append` " nick changed to " 
+                      `B.append` new 
+                      `B.append` "\n"
 processIrc _ (I.Message _ I.ERROR ps) = return ()
-processIrc _ (I.Message p I.JOIN (c:ps)) = do
+processIrc _ (I.Message p I.JOIN (c:_)) = do
   k <- nextDirName
-  modify $ L.setL (targetLens k.connectionLens) (Just (Target k TChannel c [] mempty))
+  modify $ L.setL (targetLens k.connectionLens) 
+                  (Just (Target k TChannel c [] mempty))
   modify $ L.setL (targetMapLens' c.connectionLens) (Just k)
   appendEvent . B.pack $ "new " ++ show k ++ " " ++ show c ++ "\n"
-processIrc _ (I.Message p I.PART (c:ps)) = do
+processIrc _ (I.Message p I.PART (c:_)) = do
   m <- L.getL (targetMapLens' c.connectionLens) <$> get
   maybe (return ()) (\k -> do
       modify (L.setL (targetLens k.connectionLens) Nothing)
@@ -167,10 +163,13 @@ processIrc _ m = return ()
 
 appendRaw :: B.ByteString -> Ircfs ()
 appendRaw s = modify $ L.modL (rawLens.connectionLens) (`B.append` s)
+
 appendEvent :: B.ByteString -> Ircfs ()
 appendEvent s = modify $ L.modL (eventLens.connectionLens) (`B.append` s)
+
 writeNick :: B.ByteString -> Ircfs ()
 writeNick = modify . L.modL (nickLens.connectionLens) . const
+
 appendPong :: B.ByteString -> Ircfs ()
 appendPong s = modify $ L.modL (pongLens.connectionLens) (`B.append` s)
 
@@ -188,25 +187,15 @@ chanToIter2 chan = go
   where
     go = EL.head >>= maybe go (\x -> liftIO (C.writeChan chan x) >> go)
 
--- writeraw fsReq s = fuseRequest_ fsReq $ Twrite "/raw" s (B.length s)
--- writemsg
-
--- listens on the sockets, writes received messages to ircinc
-ircReaderOld :: C.Chan Request -> N.Socket -> IrcIn -> IO ()
-ircReaderOld fsReq sock ircinc = do
-  _ <- E.run $ E.enumSocket 1024 sock E.$$ messages E.=$ chanToIter2 (unIrcIn ircinc)
-  return ()
-
+-- | Listens on the sockets, writes received messages to ircinc
 ircReader :: C.Chan Request -> N.Socket -> IO ()
 ircReader fsReq socket =
   E.run_ $ E.enumSocket 1024 socket E.$$ irclines E.=$ iterFuseWriteFs_ fsReq
 
 ircWriter :: N.Socket -> IrcOut -> IO ()
-ircWriter s ircoutc = do
-    ms <- C.getChanContents (unIrcOut ircoutc)
-    --mapM_ (N.sendAll s . I.toByteString) ms
-    mapM_ (N.sendAll s) ms
+ircWriter s out = mapM_ (N.sendAll s) =<< C.getChanContents (unIrcOut out) 
 
+-- | Initialize the filesystem.
 fsInit :: C.Chan Request -> O.Config -> IO ()
 fsInit fsReq cfg = do
   inc <- C.newChan :: IO (C.Chan Request)
