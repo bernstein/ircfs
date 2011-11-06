@@ -144,30 +144,27 @@ processIrc ircoutc m@(I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
     st <- get
     if n == nick (connection st)
       then do
-        let log = "your nick changed\n"
-            off = fromIntegral . B.length $ log
-        processTmsg ircoutc (Twrite "/event" log off) >> return ()
-        processTmsg ircoutc (Twrite "/nick" new (fromIntegral . B.length $ new))
-        return ()
-      else do
-        let log = "someones nick changed\n"
-            off = fromIntegral . B.length $ log
-        processTmsg ircoutc (Twrite "/event" log off)
-        return ()
-    let s = I.toByteString m
-        off2 = fromIntegral . B.length $ s
-    writeRaw s off2
-processIrc ircoutc m@(I.Message _ I.ERROR ps) =
-    let s = I.toByteString m
-        off = fromIntegral . B.length $ s
-    in writeRaw s off
-processIrc ircoutc m =
-    let s = I.toByteString m
-        off = fromIntegral . B.length $ s
-    in writeRaw s off
+        appendEvent $ "your nick changed to " `B.append` new `B.append` "\n"
+        writeNick new
+      else
+        appendEvent $ n `B.append` " nick changed to " `B.append` new `B.append` "\n"
+processIrc _ m@(I.Message _ I.ERROR ps) = return ()
+processIrc _ (I.Message p I.JOIN ps) = do
+  appendEvent "new 1\n"
+  return ()
+processIrc _ (I.Message p I.PART ps) = do
+  appendEvent "del 1\n"
+  return ()
+processIrc _ m = return ()
 
-writeRaw :: B.ByteString -> Int -> Ircfs ()
-writeRaw s off = modify $ L.modL (rawLens.connectionLens) (`B.append` s)
+appendRaw :: B.ByteString -> Ircfs ()
+appendRaw s = modify $ L.modL (rawLens.connectionLens) (`B.append` s)
+appendEvent :: B.ByteString -> Ircfs ()
+appendEvent s = modify $ L.modL (eventLens.connectionLens) (`B.append` s)
+writeNick :: B.ByteString -> Ircfs ()
+writeNick = modify . L.modL (nickLens.connectionLens) . const
+appendPong :: B.ByteString -> Ircfs ()
+appendPong s = modify $ L.modL (pongLens.connectionLens) (`B.append` s)
 
 chanToIter2 :: C.Chan a -> E.Iteratee a IO ()
 chanToIter2 chan = go
