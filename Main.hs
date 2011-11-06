@@ -129,14 +129,14 @@ processTmsg _ (Topen p _ _) = return Ropen
 processTmsg _ (Tstat p) = maybe Rerror Rstat . (`stat` p) <$> get
 
 processIrc :: IrcOut -> I.Message -> Ircfs ()
-processIrc ircoutc m@(I.Message _ I.PING ps) = do
+processIrc ircoutc (I.Message _ I.PING ps) = do
     stamp <- timeStamp
     let cmd = "pong " `B.append` head ps `B.append` "\n"
         off = fromIntegral . B.length $ cmd
         log = stamp `B.append` " " `B.append` cmd
     processTmsg ircoutc (Twrite "/ctl" cmd off)
     appendPong log
-processIrc ircoutc m@(I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
+processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
     yourNick <- (nick.connection) <$> get
     if n == yourNick
       then do
@@ -144,7 +144,7 @@ processIrc ircoutc m@(I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
         writeNick new
       else
         appendEvent $ n `B.append` " nick changed to " `B.append` new `B.append` "\n"
-processIrc _ m@(I.Message _ I.ERROR ps) = return ()
+processIrc _ (I.Message _ I.ERROR ps) = return ()
 processIrc _ (I.Message p I.JOIN ps) = do
   appendEvent "new 1\n"
   return ()
