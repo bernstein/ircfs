@@ -27,7 +27,9 @@ import qualified Control.Concurrent as C
 data Request = ReqRep Tmsg (C.MVar Rmsg) | Req Tmsg
   deriving Eq
 
-data Tmsg = Tread !FilePath !S.ByteCount !S.FileOffset
+data Tmsg = 
+            Tread !FilePath !S.ByteCount !S.FileOffset
+          | Treaddir !FilePath
           | Twrite !FilePath !B.ByteString !S.FileOffset 
           | Topen !FilePath !F.OpenMode !F.OpenFileFlags
           | Tstat !FilePath
@@ -39,6 +41,7 @@ data Rmsg = Rread !B.ByteString
           | Rwrite !S.ByteCount
           | Ropen
           | Rstat !F.FileStat
+          | Rreaddir ![(FilePath, F.FileStat)]
           -- Rwalk
           | Rerror
   -- deriving (Show, Read, Eq)
@@ -119,3 +122,10 @@ fsStat c p = do
     Rstat s -> return (Right s)
     Rerror -> return (Left F.eNOENT)
 
+fsReadDir :: C.Chan Request -> FilePath ->
+            IO (Either Errno [(FilePath, F.FileStat)])
+fsReadDir c p = do
+  x <- fuseRequest c (Treaddir p)
+  case x of
+    Rreaddir s -> return (Right s)
+    Rerror -> return (Left F.eNOENT)
