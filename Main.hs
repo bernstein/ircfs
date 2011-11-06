@@ -58,22 +58,10 @@ process _ _ = return ()
 -- /event -- new x #channel, new y user, del x #channel
 --
 
---doIRC :: MonadIO m => IrcOut -> N.Socket -> I.Message -> m ()
 -- ircoutc is actually not needed as an argument
--- TODO just write a PONG statement as System.Fuse.Request to Qrootctl
---doIRC fsReq ircoutc (I.Message p I.NOTICE ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.PRIVMSG ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.NICK ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.MODE ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.QUIT ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.ERROR ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.SQUIT ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.PART ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.KICK ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.TOPIC ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.INVITE ps) = undefined
 -- process incoming irc messages
 
+-- | Process incommint filesystem requests.
 processTmsg :: IrcOut -> Tmsg -> Ircfs Rmsg
 -- process Tread
 processTmsg _ (Tread "/nick" byteCount offset) = do
