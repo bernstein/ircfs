@@ -70,9 +70,10 @@ processTmsg _ (Tread "/raw" byteCount offset) =
 processTmsg _ (Tread "/event" byteCount offset) =
   return . Rread . B.take (fromIntegral byteCount) 
         . B.drop (fromIntegral offset) . eventFile . connection =<< get
+processTmsg _ (Tread "/ctl" _ _) = return . Rread $ mempty
 processTmsg _ (Tread "/0/name" byteCount offset) =
   return . Rread . B.take (fromIntegral byteCount)
-        . B.drop (fromIntegral offset) . (`B.append` "\n"). addr
+        . B.drop (fromIntegral offset) . (`B.append` "\n") . addr
         . connection =<< get
 processTmsg _ (Tread {}) = return Rerror
 
@@ -144,21 +145,24 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
       appendEvent $ n `B.append` " nick changed to " 
                       `B.append` new 
                       `B.append` "\n"
-processIrc _ (I.Message _ I.ERROR ps) = return ()
 processIrc _ (I.Message p I.JOIN (c:_)) = do
   k <- nextDirName
   modify $ L.setL (targetLens k.connectionLens) 
                   (Just (Target k TChannel c [] mempty))
   modify $ L.setL (targetMapLens' c.connectionLens) (Just k)
-  appendEvent . B.pack $ "new " ++ show k ++ " " ++ show c ++ "\n"
+  let s = B.pack $ "new " ++ show k ++ " "
+  appendEvent $ s `B.append` c `B.append` "\n"
 processIrc _ (I.Message p I.PART (c:_)) = do
   m <- L.getL (targetMapLens' c.connectionLens) <$> get
   maybe (return ()) (\k -> do
       modify (L.setL (targetLens k.connectionLens) Nothing)
       modify (L.setL (targetMapLens' c.connectionLens) Nothing)
       freeDirName k
-      appendEvent (B.pack ("del " ++ show k ++ " " ++ show c ++ "\n"))
+      let s = B.pack $ "new " ++ show k ++ " "
+      appendEvent (s `B.append` c `B.append` "\n")
     ) m
+processIrc _ m@(I.Message _ I.ERROR ps) =
+  appendEvent ("error " `B.append` (I.toByteString m) `B.append` "\n")
 processIrc _ m = return ()
 
 appendRaw :: B.ByteString -> Ircfs ()
