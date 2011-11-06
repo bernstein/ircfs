@@ -9,7 +9,7 @@ import qualified Data.Attoparsec.Char8 as A8
 import qualified Network.IRC.Message as I
 
 data CtlCommand =
-    Away { m :: B.ByteString }
+    Away { msg :: B.ByteString }
   | Back
   | Ban
   | Connect
@@ -24,7 +24,7 @@ data CtlCommand =
   | Me B.ByteString
   | Mode { nickOrChan :: B.ByteString , modes :: [B.ByteString] }
   | Motd { target :: Maybe B.ByteString }
-  | Names { m :: B.ByteString }
+  | Names { msg :: B.ByteString }
   | Nick { nickname :: B.ByteString }
   | Notice { msgtarget :: B.ByteString, msg :: B.ByteString }
   | Op
@@ -32,7 +32,7 @@ data CtlCommand =
   | Ping { msg :: B.ByteString } 
   | Pong { msg :: B.ByteString } 
   | Privmsg { msgtarget :: B.ByteString, msg :: B.ByteString }
-  | Quit { m :: B.ByteString }
+  | Quit { msg :: B.ByteString }
   | Reconnect
   | Remove B.ByteString
   | Time { target :: Maybe B.ByteString }
