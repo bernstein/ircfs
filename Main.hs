@@ -92,6 +92,18 @@ processTmsg _ (Tread "/0/name" byteCount offset) = do
   return . Rread . B.take (fromIntegral byteCount)
         . B.drop (fromIntegral offset) . (`B.append` "\n"). addr
         . connection =<< get
+processTmsg _ (Treaddir "/") =
+  let ds = [(".", defaultDirStat) ,
+            ("..", defaultDirStat), 
+            ("0",defaultDirStat) ] ++ rootDir
+      rootDir = zip (map showFilepath rootDirFiles) (map fileStat rootDirFiles)
+  in return . Rreaddir $ ds
+processTmsg _ (Treaddir _) = do
+  -- let m = fromFilePath p
+  let ds = [(".", defaultDirStat), ("..",defaultDirStat)] ++ subDir
+      subDir = zip (map showFilepath subDirFiles) (map fileStat subDirFiles)
+  return (Rreaddir ds)
+
 processTmsg _ (Tread {}) = return Rerror
 
 -- process Twrite
@@ -147,9 +159,11 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
 processIrc _ (I.Message _ I.ERROR ps) = return ()
 processIrc _ (I.Message p I.JOIN ps) = do
   appendEvent "new 1\n"
+  modify $ L.setL (targetLens 1.connectionLens) (Just (Target 1 TChannel "#mediensysteme" [] mempty))
   return ()
 processIrc _ (I.Message p I.PART ps) = do
   appendEvent "del 1\n"
+  modify $ L.setL (targetLens 1.connectionLens) Nothing
   return ()
 processIrc _ m = return ()
 
@@ -230,7 +244,7 @@ main = N.withSocketsDo $ do
               F.fuseInit          = fsInit fsReq args
             , F.fuseDestroy       = fsDestroy
             , F.fuseGetFileStat   = fsStat fsReq
-            , F.fuseReadDirectory = fsReadDir
+            , F.fuseReadDirectory = fsReadDir fsReq
             , F.fuseOpenDirectory = fsOpenDirectory
             , F.fuseOpen          = fsOpen fsReq
             , F.fuseRead          = fsRead fsReq
@@ -238,17 +252,6 @@ main = N.withSocketsDo $ do
             , F.fuseSetFileSize   = fsTruncate
             }
   withArgs [O.mtpt args] $ F.fuseMain ops F.defaultExceptionHandler
-
-fsReadDir :: FilePath -> IO (Either Errno [(FilePath, F.FileStat)])
-fsReadDir "/" = return . Right $
-                    [(".", defaultDirStat) ,("..", defaultDirStat), ("0",defaultDirStat) ] ++ rootDir
-  where
-    rootDir = zip (map showFilepath rootDirFiles) (map fileStat rootDirFiles)
-fsReadDir _ = return . Right $
-                    [(".", defaultDirStat), ("..",defaultDirStat)] ++ subDir
-  where
-    subDir = zip (map showFilepath subDirFiles) (map fileStat subDirFiles)
---fsReadDir _ = return (Left (eNOENT))
 
 fsOpenDirectory :: FilePath -> IO Errno
 fsOpenDirectory  = const (return eOK)
