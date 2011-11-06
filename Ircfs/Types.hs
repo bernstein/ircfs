@@ -42,6 +42,7 @@ import Control.Monad.State
 import qualified System.Fuse as F
 import qualified Data.Lens.Common as L
 import Data.IntMap
+import qualified Data.Map as M
 
 -- | IrcfsState, the irc file system state.
 data IrcfsState = IrcfsState
@@ -101,6 +102,7 @@ data Connection =
     , pongFile :: File -- every time a pong is send
     , rawFile :: File
     , nextDirNames :: [Int]
+    , targetMap :: M.Map B.ByteString Int -- map directory number to target id
     }
 
 type File = B.ByteString
