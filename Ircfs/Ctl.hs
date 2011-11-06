@@ -102,5 +102,5 @@ toMessage (Privmsg t s) = I.Message Nothing I.PRIVMSG [t,B.cons 58 s]
 toMessage (Quit s) = I.Message Nothing I.QUIT [s]
 --toMessage (Remove s) = I.Message Nothing I.REMOVE [s]
 toMessage (Who s) = I.Message Nothing I.WHO [s]
-toMessage _ = error "toMessage: implement the rest of me"
+toMessage _ = I.Message Nothing I.ERROR []
 
