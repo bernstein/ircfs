@@ -67,7 +67,6 @@ process _ _ = return ()
 --doIRC fsReq ircoutc (I.Message p I.QUIT ps) = undefined
 --doIRC fsReq ircoutc (I.Message p I.ERROR ps) = undefined
 --doIRC fsReq ircoutc (I.Message p I.SQUIT ps) = undefined
---doIRC fsReq ircoutc (I.Message p I.JOIN ps) = undefined
 --doIRC fsReq ircoutc (I.Message p I.PART ps) = undefined
 --doIRC fsReq ircoutc (I.Message p I.KICK ps) = undefined
 --doIRC fsReq ircoutc (I.Message p I.TOPIC ps) = undefined
@@ -111,15 +110,15 @@ processTmsg _ (Twrite "/pong" s offset) = do
   modify $ L.modL (pongLens.connectionLens) (`B.append` s)
   return . Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (Twrite "/raw" s offset) = do
-  modify $ L.modL (rawLens.connectionLens) (`B.append` s)
+  appendRaw (">>>" `B.append` s)
   -- XXX writes to /raw are special,
   -- this part is the only reason processTmsg neds ircoutc
   io . C.writeChan (unIrcOut ircoutc) $ s
   return . Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (Twrite "/ircin" s offset) = do
+  appendRaw ("<<<" `B.append` s `B.append` "\n")
   let m = A.maybeResult $ A.feed (A.parse I.message s) "\n"
   maybe (return ()) (processIrc ircoutc) m
-  modify $ L.modL (rawLens.connectionLens) (`B.append` s)
   return . Rwrite . fromIntegral . B.length $ s
 processTmsg _ (Twrite {}) = return Rerror
 
@@ -135,14 +134,11 @@ processIrc ircoutc m@(I.Message _ I.PING ps) = do
     let cmd = "pong " `B.append` head ps `B.append` "\n"
         off = fromIntegral . B.length $ cmd
         log = stamp `B.append` " " `B.append` cmd
-        s = I.toByteString m
-        off2 = fromIntegral . B.length $ s
     processTmsg ircoutc (Twrite "/ctl" cmd off)
-    processTmsg ircoutc (Twrite "/pong" log off)
-    writeRaw s off2
+    appendPong log
 processIrc ircoutc m@(I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
-    st <- get
-    if n == nick (connection st)
+    yourNick <- (nick.connection) <$> get
+    if n == yourNick
       then do
         appendEvent $ "your nick changed to " `B.append` new `B.append` "\n"
         writeNick new
