@@ -17,7 +17,7 @@ import qualified Data.Time as T
 import qualified Data.Time.Format as T
 import qualified System.Fuse as F
 import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad (foldM_,mapM_)
+import Control.Monad (foldM_, foldM ,mapM_)
 import Data.Maybe (maybe)
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
@@ -158,6 +158,11 @@ processTmsg ircoutc (Twrite "/raw" s offset) = do
   -- this part is the only reason processTmsg neds ircoutc
   io . C.writeChan (unIrcOut ircoutc) $ s
   return . Rwrite . fromIntegral . B.length $ s
+processTmsg ircoutc (Twrite "/ircin" s offset) = do
+  let m = A.maybeResult $ A.feed (A.parse I.message s) "\n"
+  maybe (return ()) (process ircoutc . Irc) m
+  modify $ L.modL (rawLens.connectionLens) (`B.append` s)
+  return . Rwrite . fromIntegral . B.length $ s
 processTmsg _ (Twrite {}) = return Rerror
 
 -- process Topen
@@ -178,10 +183,14 @@ chanToIter2 chan = go
 -- writemsg
 
 -- listens on the sockets, writes received messages to ircinc
-ircReader :: N.Socket -> IrcIn -> IO ()
-ircReader sock ircinc = do
-  x <- E.run $ E.enumSocket 1024 sock E.$$ messages E.=$ chanToIter2 (unIrcIn ircinc)
+ircReaderOld :: C.Chan Request -> N.Socket -> IrcIn -> IO ()
+ircReaderOld fsReq sock ircinc = do
+  _ <- E.run $ E.enumSocket 1024 sock E.$$ messages E.=$ chanToIter2 (unIrcIn ircinc)
   return ()
+
+ircReader :: C.Chan Request -> N.Socket -> IO ()
+ircReader fsReq socket =
+  E.run_ $ E.enumSocket 1024 socket E.$$ irclines E.=$ iterFuseWriteFs_ fsReq
 
 ircWriter :: N.Socket -> IrcOut -> IO ()
 ircWriter s ircoutc = do
@@ -209,23 +218,19 @@ fsInit fsReq cfg = do
             -- , fsreq = fsReq 
             }
 
-  ircinc <- IrcIn <$> C.newChan
-  C.forkIO $ ircReader s ircinc
+  _ <- C.forkIO $ ircReader fsReq s
 
   let nickMsg = B.pack $ "NICK " ++ O.nick cfg ++ "\r\n" 
   N.sendAll s nickMsg
   let userMsg = B.pack $ "USER none 0 * :" ++ O.nick cfg ++"\r\n"
   N.sendAll s userMsg
-  C.forkIO $ ircWriter s ircoutc
-
-  ms <- C.getChanContents (unIrcIn ircinc)
-  C.forkIO $ foldM_ (\c m -> C.writeChan c (Irc m) >> return c) inc ms
+  _ <- C.forkIO $ ircWriter s ircoutc
 
   rs <- C.getChanContents fsReq
-  C.forkIO $ foldM_ (\c r -> C.writeChan c (Fs r) >> return c) inc rs
+  _ <- C.forkIO $ foldM_ (\c r -> C.writeChan c (Fs r) >> return c) inc rs
 
   is <- C.getChanContents inc
-  C.forkIO $ runIrcfs st (mapM_ (process ircoutc) is) >> return ()
+  _ <- C.forkIO $ runIrcfs st (mapM_ (process ircoutc) is) >> return ()
   return ()
 
 fsDestroy :: IO ()
@@ -270,4 +275,19 @@ timeStamp :: MonadIO m => m B.ByteString
 timeStamp = do
   now <- liftIO $ T.getCurrentTime
   return . B.pack $ (T.formatTime defaultTimeLocale "%H:%M" now)
+
+foldMany :: Monad m => ([a] -> E.Iteratee a m b) -> E.Iteratee a m ()
+foldMany f = E.continue step where
+	step E.EOF = E.yield () E.EOF
+	step (E.Chunks []) = E.continue step
+	step (E.Chunks xs) = f xs >> E.continue step
+
+iterFuseWriteFs_ :: MonadIO m => C.Chan Request -> E.Iteratee B.ByteString m ()
+iterFuseWriteFs_ fsReq = foldMany (\xs -> liftIO $ writeMany_ fsReq xs)
+
+writeMany_ :: C.Chan Request -> [B.ByteString] -> IO (C.Chan Request)
+writeMany_ fsReq xs = foldM write_ fsReq xs
+  where write_ c x = let off = fromIntegral (B.length x)
+                     in  fuseRequest_ c (Twrite "/ircin" x off) >> return c
+
 
