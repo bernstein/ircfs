@@ -208,7 +208,8 @@ type Host = B.ByteString
 -- <host>       ::= see RFC 952 [DNS:4] for details on allowed hostnames
 host :: Parser Host
 --host = BS.cons <$> letter <*> takeWhile (inClass "a-zA-Z0-9.-")
-host = takeWhile1 (inClass "a-zA-Z0-9.-")
+--some have / in their host name , interesting
+host = takeWhile1 (inClass "a-zA-Z0-9./-")
 
 type Nick = B.ByteString
 -- <nick>       ::= <letter> { <letter> | <number> | <special> }
