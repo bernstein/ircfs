@@ -39,77 +39,77 @@ import Ircfs.Ctl as I
 import Ircfs.Types
 import Ircfs.Filesystem
 import qualified Ircfs.CmdLine as O
-import System.Fuse.Request
+import qualified System.Fuse.Request as F
 
 --newtype IrcOut = IrcOut { unIrcOut :: C.Chan I.Message }
 newtype IrcOut = IrcOut { unIrcOut :: C.Chan B.ByteString }
 newtype IrcIn  = IrcIn { unIrcIn :: C.Chan I.Message }
 
--- process :: Enumeratee Request I.Message IO a
+-- process :: Enumeratee F.Request I.Message IO a
 
---process :: IrcfsState -> Request -> IO (Maybe B.ByteString, IrcfsState)
---process :: IrcOut -> IrcfsState -> Request -> IO IrcfsState
-process :: IrcOut -> Request -> Ircfs ()
-process ircoutc (ReqRep t m) = processTmsg ircoutc t >>= (io . C.putMVar m)
-process ircoutc (Req t) = processTmsg ircoutc t >> return ()
+--process :: IrcfsState -> F.Request -> IO (Maybe B.ByteString, IrcfsState)
+--process :: IrcOut -> IrcfsState -> F.Request -> IO IrcfsState
+process :: IrcOut -> F.Request -> Ircfs ()
+process ircoutc (F.ReqRep t m) = processTmsg ircoutc t >>= (io . C.putMVar m)
+process ircoutc (F.Req t) = processTmsg ircoutc t >> return ()
 process _ _ = return ()
 
 -- | Process incoming filesystem requests.
-processTmsg :: IrcOut -> Tmsg -> Ircfs Rmsg
+processTmsg :: IrcOut -> F.Tmsg -> Ircfs F.Rmsg
 -- process Tread
-processTmsg _ (Tread p bc off) = do
+processTmsg _ (F.Tread p bc off) = do
   st <- get
-  maybe (return Rerror) (return . Rread) (readF st p bc off)
-processTmsg _ (Tread {}) = return Rerror
+  maybe (return F.Rerror) (return . F.Rread) (readF st p bc off)
+processTmsg _ (F.Tread {}) = return F.Rerror
 
 -- process Treaddir
-processTmsg _ (Treaddir "/") = do
+processTmsg _ (F.Treaddir "/") = do
   ks <- (IM.keys . targets . connection) <$> get
-  let ds = [(".", defaultDirStat) ,
-            ("..", defaultDirStat), 
-            ("0",defaultDirStat) ] ++ rootDir ++ subDirs
+  let ds = [(".", F.defaultDirStat) ,
+            ("..", F.defaultDirStat), 
+            ("0",F.defaultDirStat) ] ++ rootDir ++ subDirs
       rootDir = zip (map showFilepath rootDirFiles) (map fileStat rootDirFiles)
-      subDirs = map (\x -> (show x,defaultDirStat)) ks
-  return . Rreaddir $ ds
-processTmsg _ (Treaddir _) = do
+      subDirs = map (\x -> (show x,F.defaultDirStat)) ks
+  return . F.Rreaddir $ ds
+processTmsg _ (F.Treaddir _) = do
   -- let m = fromFilePath p
-  let ds = [(".", defaultDirStat), ("..",defaultDirStat)] ++ subDir
+  let ds = [(".", F.defaultDirStat), ("..",F.defaultDirStat)] ++ subDir
       subDir = zip (map showFilepath subDirFiles) (map fileStat subDirFiles)
-  return (Rreaddir ds)
+  return (F.Rreaddir ds)
 
 -- process Twrite
-processTmsg ircoutc (Twrite "/ctl" s offset) = do
+processTmsg ircoutc (F.Twrite "/ctl" s offset) = do
   -- Todo if a msg is longer than 512 then split it into chunks
   maybe 
-    (return Rerror)
-    (\c -> processTmsg ircoutc (Twrite "/raw" (I.toByteString.toMessage $c) 0)) 
+    (return F.Rerror)
+    (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.toByteString.toMessage $c) 0))
     (A.maybeResult $ A.parse I.parseCtl s)
-  return . Rwrite . fromIntegral . B.length $ s
-processTmsg _ (Twrite "/event" s offset) = do
+  return . F.Rwrite . fromIntegral . B.length $ s
+processTmsg _ (F.Twrite "/event" s offset) = do
   modify $ L.modL (eventLens.connectionLens) (`B.append` s)
-  return . Rwrite . fromIntegral . B.length $ s
-processTmsg _ (Twrite "/nick" s offset) = do
+  return . F.Rwrite . fromIntegral . B.length $ s
+processTmsg _ (F.Twrite "/nick" s offset) = do
   modify $ L.setL (nickLens.connectionLens) s
-  return . Rwrite . fromIntegral . B.length $ s
-processTmsg _ (Twrite "/pong" s offset) = do
+  return . F.Rwrite . fromIntegral . B.length $ s
+processTmsg _ (F.Twrite "/pong" s offset) = do
   modify $ L.modL (pongLens.connectionLens) (`B.append` s)
-  return . Rwrite . fromIntegral . B.length $ s
-processTmsg ircoutc (Twrite "/raw" s offset) = do
+  return . F.Rwrite . fromIntegral . B.length $ s
+processTmsg ircoutc (F.Twrite "/raw" s offset) = do
   appendRaw (">>>" `B.append` s)
   io . C.writeChan (unIrcOut ircoutc) $ s
-  return . Rwrite . fromIntegral . B.length $ s
-processTmsg ircoutc (Twrite "/ircin" s offset) = do
+  return . F.Rwrite . fromIntegral . B.length $ s
+processTmsg ircoutc (F.Twrite "/ircin" s offset) = do
   appendRaw ("<<<" `B.append` s `B.append` "\n")
   let m = A.maybeResult $ A.feed (A.parse I.message s) "\n"
   maybe (return ()) (processIrc ircoutc) m
-  return . Rwrite . fromIntegral . B.length $ s
-processTmsg _ (Twrite {}) = return Rerror
+  return . F.Rwrite . fromIntegral . B.length $ s
+processTmsg _ (F.Twrite {}) = return F.Rerror
 
 -- process Topen
-processTmsg _ (Topen _ _ _) = return Ropen
+processTmsg _ (F.Topen _ _ _) = return F.Ropen
 
 -- process Tstat
-processTmsg _ (Tstat p) = maybe Rerror Rstat . (`stat` p) <$> get
+processTmsg _ (F.Tstat p) = maybe F.Rerror F.Rstat . (`stat` p) <$> get
 
 -- | Process incommint irc messages.
 processIrc :: IrcOut -> I.Message -> Ircfs ()
@@ -118,7 +118,7 @@ processIrc ircoutc (I.Message _ I.PING ps) = do
     let cmd = "pong " `B.append` head ps `B.append` "\n"
         off = fromIntegral . B.length $ cmd
         log = stamp `B.append` " " `B.append` cmd
-    _ <- processTmsg ircoutc (Twrite "/ctl" cmd off)
+    _ <- processTmsg ircoutc (F.Twrite "/ctl" cmd off)
     appendPong log
 processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
   yourNick <- (nick.connection) <$> get
@@ -181,7 +181,7 @@ chanToIter2 c = go
     go = EL.head >>= maybe go (\x -> liftIO (C.writeChan c x) >> go)
 
 -- | Listens on the sockets, writes received messages to ircinc
-ircReader :: C.Chan Request -> N.Socket -> IO ()
+ircReader :: C.Chan F.Request -> N.Socket -> IO ()
 ircReader fsReq socket =
   E.run_ $ E.enumSocket 1024 socket E.$$ irclines E.=$ iterFuseWriteFs_ fsReq
 
@@ -189,7 +189,7 @@ ircWriter :: N.Socket -> IrcOut -> IO ()
 ircWriter s out = mapM_ (N.sendAll s) =<< C.getChanContents (unIrcOut out) 
 
 -- | Initialize the filesystem.
-fsInit :: C.Chan Request -> O.Config -> IO ()
+fsInit :: C.Chan F.Request -> O.Config -> IO ()
 fsInit fsReq cfg = do
   s <- getSocket (O.addr cfg) (read (O.port cfg))
   let st = IrcfsState 
@@ -231,12 +231,12 @@ main = N.withSocketsDo $ do
   let ops = F.defaultFuseOps {
               F.fuseInit          = fsInit fsReq args
             , F.fuseDestroy       = fsDestroy
-            , F.fuseGetFileStat   = fsStat fsReq
-            , F.fuseReadDirectory = fsReadDir fsReq
+            , F.fuseGetFileStat   = F.fsStat fsReq
+            , F.fuseReadDirectory = F.fsReadDir fsReq
             , F.fuseOpenDirectory = fsOpenDirectory
-            , F.fuseOpen          = fsOpen fsReq
-            , F.fuseRead          = fsRead fsReq
-            , F.fuseWrite         = fsWrite fsReq
+            , F.fuseOpen          = F.fsOpen fsReq
+            , F.fuseRead          = F.fsRead fsReq
+            , F.fuseWrite         = F.fsWrite fsReq
             , F.fuseSetFileSize   = fsTruncate
             }
   withArgs [O.mtpt args] $ F.fuseMain ops F.defaultExceptionHandler
@@ -258,11 +258,11 @@ foldMany f = E.continue step where
 	step (E.Chunks []) = E.continue step
 	step (E.Chunks xs) = f xs >> E.continue step
 
-iterFuseWriteFs_ :: MonadIO m => C.Chan Request -> E.Iteratee B.ByteString m ()
+iterFuseWriteFs_ :: MonadIO m => C.Chan F.Request -> E.Iteratee B.ByteString m ()
 iterFuseWriteFs_ fsReq = foldMany (\xs -> liftIO $ writeMany_ fsReq xs)
 
-writeMany_ :: C.Chan Request -> [B.ByteString] -> IO (C.Chan Request)
+writeMany_ :: C.Chan F.Request -> [B.ByteString] -> IO (C.Chan F.Request)
 writeMany_ fsReq xs = foldM write_ fsReq xs
   where write_ c x = let off = fromIntegral (B.length x)
-                     in  fuseRequest_ c (Twrite "/ircin" x off) >> return c
+                     in  F.fuseRequest_ c (F.Twrite "/ircin" x off) >> return c
 
