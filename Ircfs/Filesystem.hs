@@ -124,22 +124,25 @@ fileStat q       = F.defaultFileStat { F.statFileMode = filemode q }
 
 stat :: IrcfsState -> FilePath -> Maybe F.FileStat
 stat (IrcfsState NotConnected) _ = Nothing
-stat (IrcfsState con) "/nick" =
-  let size = fromIntegral . B.length . nick $ con
-  in  Just $ (fileStat Qnick) { F.statFileSize = 1+size }
-stat (IrcfsState con) "/event" =
-  let size = fromIntegral . B.length . eventFile $ con
-  in  Just $ (fileStat Qevent) { F.statFileSize = size }
-stat (IrcfsState con) "/raw" =
-  let size = fromIntegral . B.length . rawFile $ con
-  in  Just $ (fileStat Qraw) { F.statFileSize = size }
-stat (IrcfsState con) "/pong" =
-  let size = fromIntegral . B.length . pongFile $ con
-  in  Just $ (fileStat Qpong) { F.statFileSize = size }
-stat (IrcfsState con) "/0/name" =
-  let size = fromIntegral . B.length . addr $ con
-  in  Just $ (fileStat (Qname 0)) { F.statFileSize = 1+size }
-stat (IrcfsState con) p = fileStat <$> fromFilePath p
+stat s@(IrcfsState con) p = maybePlus1 <$> m <*> x
+  where m = fromFilePath p
+        x = stat' s =<< m
+        -- add 1 for newline charakter, XXX find a better way
+        maybePlus1 Qnick s = L.modL statFileSizeL (+1) s
+        maybePlus1 Qname {} s = L.modL statFileSizeL (+1) s
+        maybePlus1 _ s = s
+
+stat' :: IrcfsState -> Qreq -> Maybe F.FileStat
+stat' _ Qroot = Just $ F.defaultDirStat { F.statFileMode = filemode Qroot }
+stat' _ Qdir {} = Just $ F.defaultDirStat { F.statFileMode = filemode Qroot }
+stat' _ Qctl {} = Just $ F.defaultFileStat { F.statFileMode = filemode Qrootctl }
+stat' f q =
+  let mn = fromIntegral . B.length <$> read' f q
+      s = F.defaultFileStat { F.statFileMode = filemode Qevent }
+  in  (\n -> L.setL statFileSizeL n s) <$> mn
+
+statFileSizeL :: L.Lens F.FileStat S.FileOffset
+statFileSizeL = L.lens F.statFileSize (\x s -> s { F.statFileSize = x })
 
 readF :: IrcfsState -> FilePath -> S.ByteCount -> S.FileOffset -> Maybe B.ByteString
 readF s@(IrcfsState con) p bc off = cut <$> (read' s =<< fromFilePath p)
