@@ -266,15 +266,15 @@ toByteString :: Message -> B.ByteString
 toByteString (Message Nothing (CmdNumericReply _) ps) = "toByteString: CmdNumericReply not implemented yet"
 toByteString (Message Nothing (CmdString _) ps) = "toByteString: CmdString not Implemented yet"
 toByteString (Message Nothing PONG ps) = 
-  "PONG " `B.append` (B.intercalate "," ps) `B.append` "\r\n"
+  "PONG " `B.append` B.intercalate "," ps `B.append` "\r\n"
 toByteString (Message Nothing cmd ps) = 
-  (B.pack (show cmd)) `B.append` " " `B.append` (B.unwords ps) `B.append` "\r\n"
+  B.pack (show cmd) `B.append` " " `B.append` B.unwords ps `B.append` "\r\n"
 toByteString (Message (Just p) cmd ps) =
   prefixToByteString p
   `B.append` " "
-  `B.append` (B.pack (show cmd))
+  `B.append` B.pack (show cmd)
   `B.append` " "
-  `B.append` (B.unwords ps)
+  `B.append` B.unwords ps
   `B.append` "\r\n"
 
 prefixToByteString :: Prefix -> B.ByteString

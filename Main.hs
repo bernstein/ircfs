@@ -3,6 +3,7 @@ module Main where
 
 import Prelude hiding ((.), id)
 import Control.Category
+import Control.Arrow
 import qualified Data.Lens.Common as L
 import Control.Applicative
 import qualified Data.ByteString.Char8 as B
@@ -68,13 +69,13 @@ processTmsg _ (F.Treaddir "/") = do
   let ds = [(".", F.defaultDirStat) ,
             ("..", F.defaultDirStat), 
             ("0",F.defaultDirStat) ] ++ rootDir ++ subDirs
-      rootDir = zip (map showFilepath rootDirFiles) (map fileStat rootDirFiles)
+      rootDir = map (showFilepath &&& fileStat) rootDirFiles
       subDirs = map (\x -> (show x,F.defaultDirStat)) ks
   return . F.Rreaddir $ ds
 processTmsg _ (F.Treaddir _) = do
   -- let m = fromFilePath p
   let ds = [(".", F.defaultDirStat), ("..",F.defaultDirStat)] ++ subDir
-      subDir = zip (map showFilepath subDirFiles) (map fileStat subDirFiles)
+      subDir = map (showFilepath &&& fileStat) subDirFiles
   return (F.Rreaddir ds)
 
 -- process Twrite
@@ -151,7 +152,7 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PART (c:_)) = do
         appendEvent (s `B.append` c `B.append` "\n")
       ) m
 processIrc _ m@(I.Message _ I.ERROR _) =
-  appendEvent ("error " `B.append` (I.toByteString m) `B.append` "\n")
+  appendEvent ("error " `B.append` I.toByteString m `B.append` "\n")
 processIrc _ _ = return ()
 
 appendRaw :: B.ByteString -> Ircfs ()
@@ -221,8 +222,7 @@ fsInit fsReq cfg = do
   return ()
 
 fsDestroy :: IO ()
-fsDestroy = do
-  return ()
+fsDestroy = return ()
 
 main :: IO ()
 main = N.withSocketsDo $ do
@@ -249,8 +249,8 @@ fsTruncate p _ = if takeBaseName p == "ctl" then return eOK else return eACCES
 
 timeStamp :: MonadIO m => m B.ByteString
 timeStamp = do
-  now <- liftIO $ T.getCurrentTime
-  return . B.pack $ (T.formatTime defaultTimeLocale "%H:%M" now)
+  now <- liftIO T.getCurrentTime
+  return . B.pack $ T.formatTime defaultTimeLocale "%H:%M" now
 
 foldMany :: Monad m => ([a] -> E.Iteratee a m b) -> E.Iteratee a m ()
 foldMany f = E.continue step where
@@ -259,7 +259,7 @@ foldMany f = E.continue step where
 	step (E.Chunks xs) = f xs >> E.continue step
 
 iterFuseWriteFs_ :: MonadIO m => C.Chan F.Request -> E.Iteratee B.ByteString m ()
-iterFuseWriteFs_ fsReq = foldMany (\xs -> liftIO $ writeMany_ fsReq xs)
+iterFuseWriteFs_ fsReq = foldMany (liftIO . writeMany_ fsReq)
 
 writeMany_ :: C.Chan F.Request -> [B.ByteString] -> IO (C.Chan F.Request)
 writeMany_ fsReq xs = foldM write_ fsReq xs
