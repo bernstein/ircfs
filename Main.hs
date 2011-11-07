@@ -128,7 +128,7 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (new:_)) = do
       appendEvent $ "your nick changed to " `B.append` new `B.append` "\n"
       writeNick new
     else
-      appendEvent $ n `B.append` " nick changed to " 
+      appendEvent $ n `B.append` " changed nick to " 
                       `B.append` new 
                       `B.append` "\n"
 processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.JOIN (c:_)) = do
