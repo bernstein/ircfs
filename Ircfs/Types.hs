@@ -36,6 +36,8 @@ module Ircfs.Types
   , targetMapLens'
   , rawLens
   , nextDirNamesLens
+  , usersLens
+  , textLens
   ) where
 
 import Prelude hiding ((.), id)

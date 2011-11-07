@@ -138,7 +138,7 @@ stat' _ Qdir {} = Just $ F.defaultDirStat { F.statFileMode = filemode Qroot }
 stat' _ Qctl {} = Just $ F.defaultFileStat { F.statFileMode = filemode Qrootctl }
 stat' f q =
   let mn = fromIntegral . B.length <$> read' f q
-      s = F.defaultFileStat { F.statFileMode = filemode Qevent }
+      s = F.defaultFileStat { F.statFileMode = filemode q }
   in  (\n -> L.setL statFileSizeL n s) <$> mn
 
 statFileSizeL :: L.Lens F.FileStat S.FileOffset

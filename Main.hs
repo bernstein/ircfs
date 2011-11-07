@@ -151,6 +151,14 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PART (c:_)) = do
         let s = B.pack $ "del " ++ show k ++ " "
         appendEvent (s `B.append` c `B.append` "\n")
       ) m
+processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (c:cs)) = do
+  stamp <- timeStamp
+  tm <- L.getL (targetMapLens' c.connectionLens) <$> get
+  maybe (return ()) (\k -> do
+      modify $ L.modL (targetLens k.connectionLens) 
+                      (fmap (L.modL textLens (\t -> t `B.append` stamp `B.append` " < " `B.append` n `B.append` "> " `B.append` B.unwords cs `B.append` "\n")))
+      ) tm
+  return ()
 processIrc _ m@(I.Message _ I.ERROR _) =
   appendEvent ("error " `B.append` I.toByteString m `B.append` "\n")
 processIrc _ _ = return ()
