@@ -1,4 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- -----------------------------------------------------------------------------
+-- |
+-- Module      :  Ircfs.Ctl
+-- Copyright   :  (c) Andreas-Christoph Bernstein 2011
+-- License     :  BSD3-style (see LICENSE)
+--
+-- Maintainer  :  andreas.bernstein@googlemail.com
+-- Stability   :  unstable
+-- Portability :  not portable
+--
+-- Ctl Commands
+--
+--------------------------------------------------------------------------------
+
 module Ircfs.Ctl
   (
     parseCtl
