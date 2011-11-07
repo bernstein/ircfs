@@ -14,20 +14,29 @@
 --------------------------------------------------------------------------------
 
 module Ircfs.Types
--- IrcfsState
--- io
--- runIrcfs
--- Ircfs
--- Qreq
--- Connection
--- File
--- Target
--- Targets
---
--- connectionLens
--- addrLens
--- nickLens
-where
+  (
+    IrcfsState(..)
+  , runIrcfs
+  , Ircfs(..)
+  , io
+  , Qreq(..)
+  , Connection(..)
+  , File
+  , Target(..)
+  , Targets
+  , To(..)
+
+  , connectionLens
+  , addrLens
+  , nickLens
+  , targetLens
+  , eventLens
+  , pongLens
+  , targetMapLens
+  , targetMapLens'
+  , rawLens
+  , nextDirNamesLens
+  ) where
 
 import Prelude hiding ((.), id)
 import Control.Category

@@ -78,7 +78,7 @@ processTmsg _ (F.Treaddir _) = do
       subDir = map (showFilepath &&& fileStat) subDirFiles
   return (F.Rreaddir ds)
 
--- process Twrite
+-- process Twrite, usually appends to files
 processTmsg ircoutc (F.Twrite "/ctl" s offset) = do
   -- Todo if a msg is longer than 512 then split it into chunks
   maybe 
@@ -107,7 +107,7 @@ processTmsg ircoutc (F.Twrite "/ircin" s offset) = do
 processTmsg _ (F.Twrite {}) = return F.Rerror
 
 -- process Topen
-processTmsg _ (F.Topen _ _ _) = return F.Ropen
+processTmsg _ F.Topen {} = return F.Ropen
 
 -- process Tstat
 processTmsg _ (F.Tstat p) = maybe F.Rerror F.Rstat . (`stat` p) <$> get

@@ -1,8 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Ircfs.Ctl
-where
+  (
+    parseCtl
+  , toMessage
+  ) where
 
-import Control.Applicative hiding (many)
+import           Control.Applicative hiding (many)
 import qualified Data.ByteString as B
 import qualified Data.Attoparsec as A
 import qualified Data.Attoparsec.Char8 as A8

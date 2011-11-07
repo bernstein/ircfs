@@ -14,7 +14,11 @@
 --------------------------------------------------------------------------------
 
 module Ircfs.CmdLine
-where
+  (
+    Config(..)
+  , conf
+  , cmdLine
+  ) where
 
 import System.Console.CmdArgs -- (Data, Typeable)
 

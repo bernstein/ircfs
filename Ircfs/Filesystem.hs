@@ -1,20 +1,44 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- -----------------------------------------------------------------------------
+-- |
+-- Module      :  Ircfs.Filesystem
+-- Copyright   :  (c) Andreas-Christoph Bernstein 2011
+-- License     :  BSD3-style (see LICENSE)
+--
+-- Maintainer  :  andreas.bernstein@googlemail.com
+-- Stability   :  unstable
+-- Portability :  not portable
+--
+-- Ircfs filesystem
+--
+--------------------------------------------------------------------------------
 module Ircfs.Filesystem
-where
+  (
+  
+    readF
+  , showFilepath
+  , fileStat
+  , stat
+  , rootDirFiles
+  , subDirFiles
 
-import Control.Applicative
-import Prelude hiding ((.), id, read)
+  ) where
+
+import           Prelude hiding ((.), id, read)
 import qualified Prelude as P
-import Control.Category
+import           Control.Applicative
+import           Control.Category
 import qualified Data.Lens.Common as L
+import           Data.Monoid
+import           Data.Char (isNumber)
+import qualified Data.ByteString.Char8 as B
+
 import qualified System.Fuse as F
 import qualified System.Fuse.Request as F
 import qualified System.Posix.Types as S
-import System.FilePath
-import Data.Monoid
-import Data.Char (isNumber)
-import qualified Data.ByteString.Char8 as B
-import Ircfs.Types
+import           System.FilePath
+
+import           Ircfs.Types
 
 -- file to Qreq
 fileToQreq :: Int -> String -> Maybe Qreq

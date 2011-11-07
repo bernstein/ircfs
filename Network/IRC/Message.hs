@@ -1,16 +1,42 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Network.IRC.Message
-where
+-- -----------------------------------------------------------------------------
+-- |
+-- Module      :  Network.IRC.Message
+-- Copyright   :  (c) Andreas-Christoph Bernstein 2011
+-- License     :  BSD3-style (see LICENSE)
+--
+-- Maintainer  :  andreas.bernstein@googlemail.com
+-- Stability   :  unstable
+-- Portability :  not portable
+--
+-- 
+--
+--------------------------------------------------------------------------------
 
-import Control.Applicative hiding (many)
-import Data.Attoparsec as P
+module Network.IRC.Message
+  (
+    Message(..)
+  , message
+  , space
+  , command
+  , params
+  , channel
+  , prefix
+  , nick
+  , Command(..)
+  , Prefix(..)
+  , toByteString 
+  ) where
+
+import           Prelude hiding (takeWhile)
+import           Control.Applicative hiding (many)
+import           Data.Attoparsec
 import qualified Data.Attoparsec.Char8 as P8
-import Data.Attoparsec.Char8 (char8, endOfLine, isDigit_w8)
+import           Data.Attoparsec.Char8 (char8)
 import Data.Word (Word8)
 import qualified Data.ByteString.Char8 as B hiding (map)
-import qualified Data.ByteString as B (map)
 import qualified Data.ByteString as BS
-import Data.Maybe (maybeToList)
+import           Data.Maybe (maybeToList)
 
 -- RFC 1459
 -- 2.3.1
@@ -123,7 +149,7 @@ type Parameter = B.ByteString
 --                 or NUL or CR or LF, the first of which may not be ':'>
 type Middle = B.ByteString
 middle :: Parser Middle
-middle = BS.cons <$> nospcrlfcl <*> P.takeWhile (\c -> isNospcrlfcl c || c == 58)
+middle = BS.cons <$> nospcrlfcl <*> takeWhile (\c -> isNospcrlfcl c || c == 58)
 --middle = (BS.cons) <$> satisfy first <*> P.takeWhile valid
 --    where valid = notInClass "\32\NUL\r\n"
 --          first = notInClass ":\32\NUL\r\n"
@@ -181,13 +207,13 @@ servername = host
 type Host = B.ByteString
 -- <host>       ::= see RFC 952 [DNS:4] for details on allowed hostnames
 host :: Parser Host
---host = BS.cons <$> letter <*> P.takeWhile (inClass "a-zA-Z0-9.-")
-host = P.takeWhile1 (inClass "a-zA-Z0-9.-")
+--host = BS.cons <$> letter <*> takeWhile (inClass "a-zA-Z0-9.-")
+host = takeWhile1 (inClass "a-zA-Z0-9.-")
 
 type Nick = B.ByteString
 -- <nick>       ::= <letter> { <letter> | <number> | <special> }
 nick :: Parser Nick
-nick = BS.cons <$> letter <*> P.takeWhile 
+nick = BS.cons <$> letter <*> takeWhile 
                             (\c -> isLetter c || P8.isDigit_w8 c || isSpecial c)
 
 type Mask = B.ByteString
