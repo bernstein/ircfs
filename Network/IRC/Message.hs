@@ -256,13 +256,13 @@ number = digit
 digit :: Parser Word8
 digit = satisfy P8.isDigit_w8
 
--- <special>    ::= '-' | '[' | ']' | '\' | '`' | '^' | '{' | '}'
+-- <special>  ::= '[' | ']' | '\' | '`' | '_' | '^' | '{' | '|' | '}' -- RFC2812
 special :: Parser Word8
 special = satisfy isSpecial
 
 isSpecial :: Word8 -> Bool
-isSpecial = (`elem` [45,91,93,96,92,94,123,125])
--- (`elem` (map ord "-[]\\`^{}"))
+isSpecial = (`elem` [45,91,93,96,92,94,95,123,124,125])
+-- (`elem` (map ord "-[]\\`_^{|}"))
 
 -- <nonwhite>   ::= <any 8bit code except SPACE (0x20), NUL (0x0), CR
 --                      (0xd), and LF (0xa)>
