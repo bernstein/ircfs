@@ -32,6 +32,7 @@ import           Prelude hiding ((.), id, read)
 import qualified Prelude as P
 import           Control.Applicative
 import           Control.Category
+import           Control.Monad.State (modify)
 import qualified Data.Lens.Common as L
 import           Data.Monoid
 import           Data.Char (isNumber)
