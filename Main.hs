@@ -86,20 +86,20 @@ processTmsg ircoutc (F.Twrite "/ctl" s offset) = do
     (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.toByteString.toMessage $c) 0))
     (A.maybeResult $ A.parse I.parseCtl s)
   return . F.Rwrite . fromIntegral . B.length $ s
-processTmsg _ (F.Twrite "/event" s offset) = do
-  modify $ L.modL (eventLens.connectionLens) (`B.append` s)
+processTmsg _ (F.Twrite "/event" s _) = do
+  appendEvent s
   return . F.Rwrite . fromIntegral . B.length $ s
-processTmsg _ (F.Twrite "/nick" s offset) = do
-  modify $ L.setL (nickLens.connectionLens) s
+processTmsg _ (F.Twrite "/nick" s _) = do
+  writeNick s
   return . F.Rwrite . fromIntegral . B.length $ s
-processTmsg _ (F.Twrite "/pong" s offset) = do
-  modify $ L.modL (pongLens.connectionLens) (`B.append` s)
+processTmsg _ (F.Twrite "/pong" s _) = do
+  appendPong s
   return . F.Rwrite . fromIntegral . B.length $ s
-processTmsg ircoutc (F.Twrite "/raw" s offset) = do
+processTmsg ircoutc (F.Twrite "/raw" s _) = do
   appendRaw (">>>" `B.append` s)
   io . C.writeChan (unIrcOut ircoutc) $ s
   return . F.Rwrite . fromIntegral . B.length $ s
-processTmsg ircoutc (F.Twrite "/ircin" s offset) = do
+processTmsg ircoutc (F.Twrite "/ircin" s _) = do
   appendRaw ("<<<" `B.append` s `B.append` "\n")
   let m = A.maybeResult $ A.feed (A.parse I.message s) "\n"
   maybe (return ()) (processIrc ircoutc) m
