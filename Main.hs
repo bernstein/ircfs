@@ -51,9 +51,8 @@ newtype IrcIn  = IrcIn { unIrcIn :: C.Chan I.Message }
 --process :: IrcfsState -> F.Request -> IO (Maybe B.ByteString, IrcfsState)
 --process :: IrcOut -> IrcfsState -> F.Request -> IO IrcfsState
 process :: IrcOut -> F.Request -> Ircfs ()
-process ircoutc (F.ReqRep t m) = processTmsg ircoutc t >>= (io . C.putMVar m)
-process ircoutc (F.Req t) = processTmsg ircoutc t >> return ()
-process _ _ = return ()
+process o (F.ReqRep t m) = processTmsg o t >>= (io . C.putMVar m)
+process o (F.Req t)      = processTmsg o t >> return ()
 
 -- | Process incoming filesystem requests.
 processTmsg :: IrcOut -> F.Tmsg -> Ircfs F.Rmsg
