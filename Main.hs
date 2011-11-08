@@ -163,18 +163,6 @@ processIrc _ m@(I.Message _ I.ERROR _) =
   appendEvent ("error " `B.append` I.toByteString m `B.append` "\n")
 processIrc _ _ = return ()
 
-appendRaw :: B.ByteString -> Ircfs ()
-appendRaw s = modify $ L.modL (rawLens.connectionLens) (`B.append` s)
-
-appendEvent :: B.ByteString -> Ircfs ()
-appendEvent s = modify $ L.modL (eventLens.connectionLens) (`B.append` s)
-
-writeNick :: B.ByteString -> Ircfs ()
-writeNick = modify . L.modL (nickLens.connectionLens) . const
-
-appendPong :: B.ByteString -> Ircfs ()
-appendPong s = modify $ L.modL (pongLens.connectionLens) (`B.append` s)
-
 nextDirName :: Ircfs Int
 nextDirName = do
   k <- (head . nextDirNames . connection) <$> get

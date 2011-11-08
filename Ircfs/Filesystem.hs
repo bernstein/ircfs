@@ -22,6 +22,10 @@ module Ircfs.Filesystem
   , rootDirFiles
   , subDirFiles
 
+  , appendRaw
+  , appendEvent
+  , appendPong
+  , writeNick
   ) where
 
 import           Prelude hiding ((.), id, read)
@@ -174,4 +178,17 @@ statHelper (Qname k) con = targetName con
 -- might return empty string, if filepath is unknown 
 -- readHelper :: Qreq -> (Connection -> B.ByteString)
 -- readHelper (Qname k) con =
+
+appendRaw :: B.ByteString -> Ircfs ()
+appendRaw s = modify $ L.modL (rawLens.connectionLens) (`B.append` s)
+
+appendEvent :: B.ByteString -> Ircfs ()
+appendEvent s = modify $ L.modL (eventLens.connectionLens) (`B.append` s)
+
+writeNick :: B.ByteString -> Ircfs ()
+writeNick = modify . L.modL (nickLens.connectionLens) . const
+
+appendPong :: B.ByteString -> Ircfs ()
+appendPong s = modify $ L.modL (pongLens.connectionLens) (`B.append` s)
+
 
