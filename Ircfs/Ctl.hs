@@ -106,6 +106,23 @@ remainder = A.takeTill A8.isEndOfLine
 
 -- upperCaseFirstWord
 
+-- from rfc2812 :
+-- "Clients SHOULD NOT use a prefix when sending a
+-- message; if they use one, the only valid prefix is the registered
+-- nickname associated with the client.
+-- The command MUST either be a valid IRC command or a three (3) digit
+-- number represented in ASCII text.
+--
+-- IRC messages are always lines of characters terminated with a CR-LF
+-- (Carriage Return - Line Feed) pair, and these messages SHALL NOT
+-- exceed 512 characters in length, counting all characters including
+-- the trailing CR-LF. Thus, there are 510 characters maximum allowed
+-- for the command and its parameters.  There is no provision for
+-- continuation of message lines.  See section 6 for more details about
+-- current implementations.
+-- "
+
+
 toMessage :: CtlCommand -> I.Message
 toMessage (Away s) = I.Message Nothing I.AWAY [s]
 toMessage Back     = I.Message Nothing I.AWAY []
