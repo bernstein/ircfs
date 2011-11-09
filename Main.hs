@@ -158,6 +158,12 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (c:cs)) = do
                       (fmap (L.modL textLens (\t -> t `B.append` stamp `B.append` " < " `B.append` n `B.append` "> " `B.append` B.unwords cs `B.append` "\n")))
       ) tm
   return ()
+processIrc _ m@(I.Message _ I.PRIVMSG _) = do
+  stamp <- timeStamp
+  tm <- L.getL (targetMapLens' c.connectionLens) <$> get
+  let s = I.toByteString m
+  appendEvent $ stamp `B.append` " error: processIrc PRIVMSG " `B.append` s `B.append` "\n"
+  return ()
 processIrc _ m@(I.Message _ I.ERROR _) =
   appendEvent ("error " `B.append` I.toByteString m `B.append` "\n")
 processIrc _ _ = return ()
