@@ -26,6 +26,9 @@ module Network.IRC.Message
   , Command(..)
   , Prefix(..)
   , toByteString 
+  , prefixToByteString
+  , commandToByteString
+  , paramsToByteString
   ) where
 
 import           Prelude hiding (takeWhile)
@@ -61,69 +64,110 @@ data Prefix = PrefixServer !Servername
   deriving (Eq,Ord,Show)
 --  <prefix>   ::= <servername> | <nick> [ '!' <user> ] [ '@' <host> ]
 prefix :: Parser Prefix
-prefix =
-         PrefixServer <$> servername <*space -- lookAhead (char8 ' ')
-     <|> PrefixNick <$> nick
+prefix = prefixNick <|> prefixServer
+  where prefixServer = PrefixServer <$> servername <* space
+        prefixNick = PrefixNick <$> nick
                     <*> optional (char8 '!' *> user)
                     <*> optional (char8 '@' *> host)
                     <* space -- lookAhead (char8 ' ')
 
 data Command =
     CmdNumericReply Int
-  | PASS
-  | NICK
-  | USER
-  | OPER
-  | MODE
-  | SERVICE
-  | QUIT
-  | SQUIT
-  | JOIN
-  | PART
-  | NAMES
-  | KICK
-  | PRIVMSG
-  | NOTICE
-  | MOTD
-  | TIME
-  | WHO
-  | PING
-
+  | ADMIN
   | AWAY
-  | TOPIC
-  | PONG
-  | INVITE
-  | WHOIS
+  | CONNECT
+  | DIE
   | ERROR
+  | INFO
+  | INVITE
+  | ISON
+  | JOIN
+  | KICK
+  | KILL
+  | LINKS
+  | LIST
+  | LUSERS
+  | MODE
+  | MOTD
+  | NAMES
+  | NICK
+  | NOTICE
+  | OPER
+  | PART
+  | PASS
+  | PING
+  | PONG
+  | PRIVMSG
+  | QUIT
+  | REHASH
+  | RESTART
+  | SERVICE
+  | SERVLIST
+  | SQUERY
+  | SQUIT
+  | STATS
+  | SUMMON
+  | TIME
+  | TOPIC
+  | TRACE
+  | USER
+  | USERHOST
+  | USERS
+  | VERSION
+  | WALLOPS
+  | WHO
+  | WHOIS
+  | WHOWAS
   | CmdString B.ByteString
   deriving (Show,Read,Eq,Ord)
 --  <command>  ::= <letter> { <letter> } | <number> <number> <number>
 command :: Parser Command
 command =  CmdNumericReply   <$> threeDigitNumber
-       <|> AWAY    <$ string "AWAY"
-       <|> ERROR   <$ string "ERROR"
-       <|> INVITE  <$ string "INVITE"
-       <|> JOIN    <$ string "JOIN"
-       <|> KICK    <$ string "KICK"
-       <|> MODE    <$ string "MODE"
-       <|> MOTD    <$ string "MOTD"
-       <|> NAMES   <$ string "NAMES"
-       <|> NICK    <$ string "NICK"
-       <|> NOTICE  <$ string "NOTICE"
-       <|> OPER    <$ string "OPER"
-       <|> PART    <$ string "PART"
-       <|> PASS    <$ string "PASS"
-       <|> PING    <$ string "PING"
-       <|> PONG    <$ string "PONG"
+       <|> ADMIN <$ string "ADMIN"
+       <|> AWAY <$ string "AWAY"
+       <|> CONNECT <$ string "CONNECT"
+       <|> DIE <$ string "DIE"
+       <|> ERROR <$ string "ERROR"
+       <|> INFO <$ string "INFO"
+       <|> INVITE <$ string "INVITE"
+       <|> ISON <$ string "ISON"
+       <|> JOIN <$ string "JOIN"
+       <|> KICK <$ string "KICK"
+       <|> KILL <$ string "KILL"
+       <|> LINKS <$ string "LINKS"
+       <|> LIST <$ string "LIST"
+       <|> LUSERS <$ string "LUSERS"
+       <|> MODE <$ string "MODE"
+       <|> MOTD <$ string "MOTD"
+       <|> NAMES <$ string "NAMES"
+       <|> NICK <$ string "NICK"
+       <|> NOTICE <$ string "NOTICE"
+       <|> OPER <$ string "OPER"
+       <|> PART <$ string "PART"
+       <|> PASS <$ string "PASS"
+       <|> PING <$ string "PING"
+       <|> PONG <$ string "PONG"
        <|> PRIVMSG <$ string "PRIVMSG"
-       <|> QUIT    <$ string "QUIT"
-       <|> SQUIT   <$ string "SQUIT"
+       <|> QUIT <$ string "QUIT"
+       <|> REHASH <$ string "REHASH"
+       <|> RESTART <$ string "RESTART"
        <|> SERVICE <$ string "SERVICE"
-       <|> TIME    <$ string "TIME"
-       <|> TOPIC   <$ string "TOPIC"
-       <|> USER    <$ string "USER"
-       <|> WHOIS   <$ string "WHOIS"
-       <|> WHO     <$ string "WHO"
+       <|> SERVLIST <$ string "SERVLIST"
+       <|> SQUERY <$ string "SQUERY"
+       <|> SQUIT <$ string "SQUIT"
+       <|> STATS <$ string "STATS"
+       <|> SUMMON <$ string "SUMMON"
+       <|> TIME <$ string "TIME"
+       <|> TOPIC <$ string "TOPIC"
+       <|> TRACE <$ string "TRACE"
+       <|> USERHOST <$ string "USERHOST"
+       <|> USERS <$ string "USERS"
+       <|> USER <$ string "USER"
+       <|> VERSION <$ string "VERSION"
+       <|> WALLOPS <$ string "WALLOPS"
+       <|> WHOIS <$ string "WHOIS"
+       <|> WHOWAS <$ string "WHOWAS"
+       <|> WHO <$ string "WHO"
        <|> ((CmdString <$> takeWhile1 isLetter ) <?> "Cmdstring hat nen problem")
        -- <|> fail "command"
 
@@ -293,16 +337,14 @@ isNospcrlfcl = not.(`elem` [0,10,13,32,58])
 toByteString :: Message -> B.ByteString
 toByteString (Message Nothing (CmdNumericReply _) ps) = "toByteString: CmdNumericReply not implemented yet"
 toByteString (Message Nothing (CmdString _) ps) = "toByteString: CmdString not Implemented yet"
-toByteString (Message Nothing PONG ps) = 
-  "PONG " `B.append` B.intercalate "," ps `B.append` "\r\n"
 toByteString (Message Nothing cmd ps) = 
-  B.pack (show cmd) `B.append` " " `B.append` B.unwords ps `B.append` "\r\n"
+  commandToByteString cmd `B.append` paramsToByteString ps `B.append` "\r\n"
 toByteString (Message (Just p) cmd ps) =
-  prefixToByteString p
+  ":" 
+  `B.append` prefixToByteString p
   `B.append` " "
-  `B.append` B.pack (show cmd)
-  `B.append` " "
-  `B.append` B.unwords ps
+  `B.append` commandToByteString cmd
+  `B.append` paramsToByteString ps
   `B.append` "\r\n"
 
 commandToByteString :: Command -> B.ByteString
@@ -312,15 +354,16 @@ commandToByteString (CmdNumericReply x)
   | otherwise = B.pack (show x)
 commandToByteString c  = B.pack . show $ c
 
+-- also appends a white space to be symmetric to the prefix parser
 prefixToByteString :: Prefix -> B.ByteString
-prefixToByteString (PrefixServer s) = ":" `B.append` s
-prefixToByteString (PrefixNick n Nothing Nothing) = ":" `B.append` n
+prefixToByteString (PrefixServer s) = s
+prefixToByteString (PrefixNick n Nothing Nothing) = n
 prefixToByteString (PrefixNick n (Just u) Nothing) =
-  ":" `B.append` n `B.append` "!" `B.append` u
+  n `B.append` "!" `B.append` u
 prefixToByteString (PrefixNick n Nothing (Just h)) =
-  ":" `B.append` n `B.append` "@" `B.append` h
+  n `B.append` "@" `B.append` h
 prefixToByteString (PrefixNick n (Just u) (Just h)) =
-  ":" `B.append` n `B.append` "!" `B.append` u `B.append` "@" `B.append` h
+  n `B.append` "!" `B.append` u `B.append` "@" `B.append` h
 
 paramsToByteString :: Params -> B.ByteString
 paramsToByteString xs
