@@ -37,6 +37,7 @@ import Data.Word (Word8)
 import qualified Data.ByteString.Char8 as B hiding (map)
 import qualified Data.ByteString as BS
 import           Data.Maybe (maybeToList)
+import           Data.Monoid
 
 -- RFC 1459
 -- 2.3.1
@@ -304,6 +305,13 @@ toByteString (Message (Just p) cmd ps) =
   `B.append` B.unwords ps
   `B.append` "\r\n"
 
+commandToByteString :: Command -> B.ByteString
+commandToByteString (CmdNumericReply x)
+  | x < 10 = "00" `B.append` B.pack (show x)
+  | x < 100 = "0" `B.append` B.pack (show x)
+  | otherwise = B.pack (show x)
+commandToByteString c  = B.pack . show $ c
+
 prefixToByteString :: Prefix -> B.ByteString
 prefixToByteString (PrefixServer s) = ":" `B.append` s
 prefixToByteString (PrefixNick n Nothing Nothing) = ":" `B.append` n
@@ -314,3 +322,7 @@ prefixToByteString (PrefixNick n Nothing (Just h)) =
 prefixToByteString (PrefixNick n (Just u) (Just h)) =
   ":" `B.append` n `B.append` "!" `B.append` u `B.append` "@" `B.append` h
 
+paramsToByteString :: Params -> B.ByteString
+paramsToByteString xs
+  | null xs = mempty
+  | otherwise = " " `B.append` B.unwords xs
