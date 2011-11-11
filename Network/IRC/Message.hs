@@ -180,13 +180,14 @@ skipSpaces :: Parser ()
 skipSpaces = satisfy P8.isHorizontalSpace *> skipWhile P8.isHorizontalSpace
 
 --  <params>   ::= <SPACE> [ ':' <trailing> | <middle> <params> ]
-newtype Params = Params [B.ByteString]
+data Params = Params [B.ByteString] (Maybe B.ByteString)
   deriving (Eq,Ord,Show,Read)
+
 params :: Parser Params
 params = 
-  let ps = ((++) <$> many (skipSpaces *> middle)
-          <*> (maybeToList <$> optional (char8 ' ' *> char8 ':' *> trailing)))
-  in fmap (Params . filter (not . B.null) )  ps
+  let m = many (skipSpaces *> middle)
+      t = optional (char8 ' ' *> char8 ':' *> trailing)
+  in Params <$> m <*> t
 -- i do not consider the alternive
 -- exactly 14 (space middle) parts and a (space trailing) part where the colon
 -- is optional
@@ -339,7 +340,7 @@ isNospcrlfcl :: Word8 -> Bool
 isNospcrlfcl = not.(`elem` [0,10,13,32,58])
 
 toByteString :: Message -> B.ByteString
-toByteString (Message Nothing (CmdNumericReply _) ps) = "toByteString: CmdNumericReply not implemented yet"
+--toByteString (Message Nothing (CmdNumericReply _) ps) = "toByteString: CmdNumericReply not implemented yet"
 toByteString (Message Nothing (CmdString _) ps) = "toByteString: CmdString not Implemented yet"
 toByteString (Message Nothing cmd ps) = 
   commandToByteString cmd `B.append` paramsToByteString ps `B.append` "\r\n"
@@ -370,6 +371,8 @@ prefixToByteString (PrefixNick n (Just u) (Just h)) =
   n `B.append` "!" `B.append` u `B.append` "@" `B.append` h
 
 paramsToByteString :: Params -> B.ByteString
-paramsToByteString (Params xs)
-  | null xs = mempty
-  | otherwise = " " `B.append` B.unwords xs
+paramsToByteString (Params [] Nothing) = mempty
+paramsToByteString (Params m@(x:_) Nothing) = " " `B.append` B.unwords m
+paramsToByteString (Params [] (Just t)) = " :" `B.append` t
+paramsToByteString (Params m@(x:_) (Just t)) = " " `B.append` B.unwords m
+                                                `B.append` " :" `B.append` t
