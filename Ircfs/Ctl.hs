@@ -124,17 +124,17 @@ remainder = A.takeTill A8.isEndOfLine
 
 
 toMessage :: CtlCommand -> I.Message
-toMessage (Away s) = I.Message Nothing I.AWAY [s]
-toMessage Back     = I.Message Nothing I.AWAY []
-toMessage (Join s) = I.Message Nothing I.JOIN [s]
+toMessage (Away s) = I.Message Nothing I.AWAY (I.Params [s])
+toMessage Back     = I.Message Nothing I.AWAY (I.Params [])
+toMessage (Join s) = I.Message Nothing I.JOIN (I.Params [s])
 --toMessage (Me s)   = I.Message Nothing I.JOIN [s]
-toMessage (Names s) = I.Message Nothing I.NAMES [s]
-toMessage (Nick s) = I.Message Nothing I.NICK [s]
-toMessage (Part s) = I.Message Nothing I.PART [s]
-toMessage (Pong s) = I.Message Nothing I.PONG [s]
-toMessage (Privmsg t s) = I.Message Nothing I.PRIVMSG [t,B.cons 58 s]
-toMessage (Quit s) = I.Message Nothing I.QUIT [s]
+toMessage (Names s) = I.Message Nothing I.NAMES (I.Params [s])
+toMessage (Nick s) = I.Message Nothing I.NICK (I.Params [s])
+toMessage (Part s) = I.Message Nothing I.PART (I.Params [s])
+toMessage (Pong s) = I.Message Nothing I.PONG (I.Params [s])
+toMessage (Privmsg t s) = I.Message Nothing I.PRIVMSG (I.Params [t,B.cons 58 s])
+toMessage (Quit s) = I.Message Nothing I.QUIT (I.Params [s])
 --toMessage (Remove s) = I.Message Nothing I.REMOVE [s]
-toMessage (Who s) = I.Message Nothing I.WHO [s]
-toMessage _ = I.Message Nothing I.ERROR ["unknown CtlCommand"]
+toMessage (Who s) = I.Message Nothing I.WHO (I.Params [s])
+toMessage _ = I.Message Nothing I.ERROR (I.Params ["unknown CtlCommand"])
 

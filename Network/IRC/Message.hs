@@ -25,6 +25,7 @@ module Network.IRC.Message
   , nick
   , Command(..)
   , Prefix(..)
+  , Params(..)
   , toByteString 
   , prefixToByteString
   , commandToByteString
@@ -179,10 +180,13 @@ skipSpaces :: Parser ()
 skipSpaces = satisfy P8.isHorizontalSpace *> skipWhile P8.isHorizontalSpace
 
 --  <params>   ::= <SPACE> [ ':' <trailing> | <middle> <params> ]
-type Params = [B.ByteString]
+newtype Params = Params [B.ByteString]
+  deriving (Eq,Ord,Show,Read)
 params :: Parser Params
-params = (++) <$> many (skipSpaces *> middle)
-            <*> (maybeToList <$> optional (char8 ' ' *> char8 ':' *> trailing))
+params = 
+  let ps = ((++) <$> many (skipSpaces *> middle)
+          <*> (maybeToList <$> optional (char8 ' ' *> char8 ':' *> trailing)))
+  in fmap (Params . filter (not . B.null) )  ps
 -- i do not consider the alternive
 -- exactly 14 (space middle) parts and a (space trailing) part where the colon
 -- is optional
@@ -366,6 +370,6 @@ prefixToByteString (PrefixNick n (Just u) (Just h)) =
   n `B.append` "!" `B.append` u `B.append` "@" `B.append` h
 
 paramsToByteString :: Params -> B.ByteString
-paramsToByteString xs
+paramsToByteString (Params xs)
   | null xs = mempty
   | otherwise = " " `B.append` B.unwords xs
