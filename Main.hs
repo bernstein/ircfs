@@ -11,11 +11,9 @@ import Foreign.C.Error
 import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
-import System.FilePath (splitFileName,takeBaseName)
 import System.Environment (withArgs)
 import System.Locale (defaultTimeLocale)
 import qualified Data.Time as T
-import qualified Data.Time.Format as T
 import qualified System.Fuse as F
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad (foldM, when)
