@@ -59,6 +59,8 @@ import qualified Data.Map as M
 data IrcfsState = IrcfsState
     { connection :: Connection
     -- , fsreq :: C.Chan FsRequest -- > move to IrcfsState
+    , userID :: Int
+    , groupID :: Int
     } 
 
 connectionLens :: L.Lens IrcfsState Connection

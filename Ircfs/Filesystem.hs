@@ -128,8 +128,8 @@ fileStat Qctl {} = F.defaultFileStat { F.statFileMode = filemode Qrootctl }
 fileStat q       = F.defaultFileStat { F.statFileMode = filemode q }
 
 stat :: IrcfsState -> FilePath -> Maybe F.FileStat
-stat (IrcfsState NotConnected) _ = Nothing
-stat s@(IrcfsState con) p = maybePlus1 <$> m <*> x
+stat (IrcfsState NotConnected _ _) _ = Nothing
+stat s@(IrcfsState con _ _) p = maybePlus1 <$> m <*> x
   where m = fromFilePath p
         x = stat' s =<< m
         -- add 1 for newline charakter, XXX find a better way
@@ -138,37 +138,52 @@ stat s@(IrcfsState con) p = maybePlus1 <$> m <*> x
         maybePlus1 _ s = s
 
 stat' :: IrcfsState -> Qreq -> Maybe F.FileStat
-stat' _ Qroot = Just $ F.defaultDirStat { F.statFileMode = filemode Qroot }
-stat' _ Qdir {} = Just $ F.defaultDirStat { F.statFileMode = filemode Qroot }
-stat' _ Qctl {} = Just $ F.defaultFileStat { F.statFileMode = filemode Qrootctl }
+stat' f Qroot = Just $ F.defaultDirStat 
+                                    { F.statFileMode = filemode Qroot 
+                                    , F.statFileOwner = fromIntegral $ userID f
+                                    , F.statFileGroup = fromIntegral $ groupID f
+                                    }
+stat' f Qdir {} = Just $ F.defaultDirStat 
+                                    { F.statFileMode = filemode Qroot 
+                                    , F.statFileOwner = fromIntegral $ userID f
+                                    , F.statFileGroup = fromIntegral $ groupID f
+                                    }
+stat' f Qctl {} = Just $ F.defaultFileStat 
+                                    { F.statFileMode = filemode Qrootctl 
+                                    , F.statFileOwner = fromIntegral $ userID f
+                                    , F.statFileGroup = fromIntegral $ groupID f
+                                    }
 stat' f q =
   let mn = fromIntegral . B.length <$> read' f q
-      s = F.defaultFileStat { F.statFileMode = filemode q }
+      s = F.defaultFileStat { F.statFileMode = filemode q 
+                            , F.statFileOwner = fromIntegral $ userID f
+                            , F.statFileGroup = fromIntegral $ groupID f
+                            }
   in  (\n -> L.setL statFileSizeL n s) <$> mn
 
 statFileSizeL :: L.Lens F.FileStat S.FileOffset
 statFileSizeL = L.lens F.statFileSize (\x s -> s { F.statFileSize = x })
 
 readF :: IrcfsState -> FilePath -> S.ByteCount -> S.FileOffset -> Maybe B.ByteString
-readF s@(IrcfsState con) p bc off = cut <$> (read' s =<< fromFilePath p)
+readF s@(IrcfsState con _ _) p bc off = cut <$> (read' s =<< fromFilePath p)
   where cut = B.take (fromIntegral bc) . B.drop (fromIntegral off)
 
 read' :: IrcfsState -> Qreq -> Maybe B.ByteString
-read' (IrcfsState con) Qroot      = Nothing
-read' (IrcfsState con) Qrootctl   = Just mempty
-read' (IrcfsState con) Qevent     = Just $ eventFile con
-read' (IrcfsState con) Qraw       = Just $ rawFile con
-read' (IrcfsState con) Qnick      = Just $ B.append (nick con) "\n"
-read' (IrcfsState con) Qpong      = Just $ pongFile con
-read' (IrcfsState con) Qdir {}    = Nothing
-read' (IrcfsState con) Qctl {}    = Just mempty
-read' (IrcfsState con) (Qname 0)  = Just . (`B.append` "\n") . addr $ con
-read' (IrcfsState con) (Qname k)  = 
+read' (IrcfsState con _ _) Qroot      = Nothing
+read' (IrcfsState con _ _) Qrootctl   = Just mempty
+read' (IrcfsState con _ _) Qevent     = Just $ eventFile con
+read' (IrcfsState con _ _) Qraw       = Just $ rawFile con
+read' (IrcfsState con _ _) Qnick      = Just $ B.append (nick con) "\n"
+read' (IrcfsState con _ _) Qpong      = Just $ pongFile con
+read' (IrcfsState con _ _) Qdir {}    = Nothing
+read' (IrcfsState con _ _) Qctl {}    = Just mempty
+read' (IrcfsState con _ _) (Qname 0)  = Just . (`B.append` "\n") . addr $ con
+read' (IrcfsState con _ _) (Qname k)  = 
   ((`B.append` "\n") . targetName) <$> L.getL (targetLens k) con
-read' (IrcfsState con) (Qusers 0) = Just mempty
-read' (IrcfsState con) (Qusers k) = users <$> L.getL (targetLens k) con
-read' (IrcfsState con) (Qdata 0)  = Just mempty
-read' (IrcfsState con) (Qdata k)  = text <$> L.getL (targetLens k) con
+read' (IrcfsState con _ _) (Qusers 0) = Just mempty
+read' (IrcfsState con _ _) (Qusers k) = users <$> L.getL (targetLens k) con
+read' (IrcfsState con _ _) (Qdata 0)  = Just mempty
+read' (IrcfsState con _ _) (Qdata k)  = text <$> L.getL (targetLens k) con
 
 {-
 - uses readHelper

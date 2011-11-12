@@ -11,6 +11,8 @@ import Foreign.C.Error
 import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
+import qualified System.Posix.User as S
+import System.FilePath (takeBaseName)
 import System.Environment (withArgs)
 import System.Locale (defaultTimeLocale)
 import qualified Data.Time as T
@@ -197,6 +199,8 @@ ircWriter s out = mapM_ (N.sendAll s) =<< C.getChanContents (unIrcOut out)
 fsInit :: C.Chan F.Request -> O.Config -> IO ()
 fsInit fsReq cfg = do
   s <- getSocket (O.addr cfg) (read (O.port cfg))
+  uid <- fromIntegral <$> S.getEffectiveUserID
+  gid <- fromIntegral <$> S.getEffectiveGroupID
   let st = IrcfsState 
             { connection = 
                       Connection
@@ -210,6 +214,8 @@ fsInit fsReq cfg = do
                       , nextDirNames = [1..100]
                       , targetMap = mempty
                       }
+            , userID = uid
+            , groupID = gid
             }
 
   _ <- C.forkIO $ ircReader fsReq s
