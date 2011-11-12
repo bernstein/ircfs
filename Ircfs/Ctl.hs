@@ -122,19 +122,19 @@ remainder = A.takeTill A8.isEndOfLine
 -- current implementations.
 -- "
 
-
+-- XXX : TODO testing
 toMessage :: CtlCommand -> I.Message
-toMessage (Away s) = I.Message Nothing I.AWAY (I.Params [s])
-toMessage Back     = I.Message Nothing I.AWAY (I.Params [])
-toMessage (Join s) = I.Message Nothing I.JOIN (I.Params [s])
+toMessage (Away s) = I.Message Nothing I.AWAY (I.Params [s] Nothing)
+toMessage Back     = I.Message Nothing I.AWAY (I.Params [] Nothing)
+toMessage (Join s) = I.Message Nothing I.JOIN (I.Params [s] Nothing)
 --toMessage (Me s)   = I.Message Nothing I.JOIN [s]
-toMessage (Names s) = I.Message Nothing I.NAMES (I.Params [s])
-toMessage (Nick s) = I.Message Nothing I.NICK (I.Params [s])
-toMessage (Part s) = I.Message Nothing I.PART (I.Params [s])
-toMessage (Pong s) = I.Message Nothing I.PONG (I.Params [s])
-toMessage (Privmsg t s) = I.Message Nothing I.PRIVMSG (I.Params [t,B.cons 58 s])
-toMessage (Quit s) = I.Message Nothing I.QUIT (I.Params [s])
+toMessage (Names s) = I.Message Nothing I.NAMES (I.Params [s] Nothing)
+toMessage (Nick s) = I.Message Nothing I.NICK (I.Params [s] Nothing)
+toMessage (Part s) = I.Message Nothing I.PART (I.Params [s] Nothing)
+toMessage (Pong s) = I.Message Nothing I.PONG (I.Params [s] Nothing)
+toMessage (Privmsg t s) = I.Message Nothing I.PRIVMSG (I.Params [t] (Just s))
+toMessage (Quit s) = I.Message Nothing I.QUIT (I.Params [s] Nothing)
 --toMessage (Remove s) = I.Message Nothing I.REMOVE [s]
-toMessage (Who s) = I.Message Nothing I.WHO (I.Params [s])
-toMessage _ = I.Message Nothing I.ERROR (I.Params ["unknown CtlCommand"])
+toMessage (Who s) = I.Message Nothing I.WHO (I.Params [s] Nothing)
+toMessage _ = I.Message Nothing I.ERROR (I.Params ["unknown CtlCommand"] Nothing)
 

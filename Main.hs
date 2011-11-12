@@ -19,7 +19,7 @@ import qualified Data.Time.Format as T
 import qualified System.Fuse as F
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad (foldM_, foldM, mapM_, when)
-import Data.Maybe (maybe)
+import Data.Maybe (maybe, maybeToList)
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
 import Data.Attoparsec as A
@@ -113,14 +113,15 @@ processTmsg _ (F.Tstat p) = maybe F.Rerror F.Rstat . (`stat` p) <$> get
 
 -- | Process incommint irc messages.
 processIrc :: IrcOut -> I.Message -> Ircfs ()
-processIrc ircoutc (I.Message _ I.PING (I.Params ps)) = do
+-- example: PING :irc.funet.fi ; Ping message sent by server
+processIrc ircoutc (I.Message _ I.PING (I.Params _ (Just p))) = do
     stamp <- timeStamp
-    let cmd = "pong " `B.append` head ps `B.append` "\n"
+    let cmd = "pong " `B.append` p `B.append` "\n"
         off = fromIntegral . B.length $ cmd
         log = stamp `B.append` " " `B.append` cmd
     _ <- processTmsg ircoutc (F.Twrite "/ctl" cmd off)
     appendPong log
-processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params (new:_))) = do
+processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params [] (Just new))) = do
   yourNick <- (nick.connection) <$> get
   if n == yourNick
     then do
@@ -130,7 +131,17 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params (new:_))) =
       appendEvent $ n `B.append` " changed nick to " 
                       `B.append` new 
                       `B.append` "\n"
-processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.JOIN (I.Params (c:_))) = do
+processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params (new:_) _)) = do
+  yourNick <- (nick.connection) <$> get
+  if n == yourNick
+    then do
+      appendEvent $ "your nick changed to " `B.append` new `B.append` "\n"
+      writeNick new
+    else
+      appendEvent $ n `B.append` " changed nick to " 
+                      `B.append` new 
+                      `B.append` "\n"
+processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.JOIN (I.Params (c:_) _)) = do
   yourNick <- (nick.connection) <$> get
   when (n == yourNick) $ do
     k <- nextDirName
@@ -139,7 +150,7 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.JOIN (I.Params (c:_))) = d
     modify $ L.setL (targetMapLens' c.connectionLens) (Just k)
     let s = B.pack $ "new " ++ show k ++ " "
     appendEvent $ s `B.append` c `B.append` "\n"
-processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PART (I.Params (c:_))) = do
+processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PART (I.Params (c:_) _)) = do
   yourNick <- (nick.connection) <$> get
   when (n == yourNick) $ do
     m <- L.getL (targetMapLens' c.connectionLens) <$> get
@@ -150,12 +161,13 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PART (I.Params (c:_))) = d
         let s = B.pack $ "del " ++ show k ++ " "
         appendEvent (s `B.append` c `B.append` "\n")
       ) m
-processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (I.Params (c:cs))) = do
+processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (I.Params (c:cs) t)) = do
   stamp <- timeStamp
   tm <- L.getL (targetMapLens' c.connectionLens) <$> get
+  let ts = maybeToList t
   maybe (return ()) (\k -> do
       modify $ L.modL (targetLens k.connectionLens) 
-                      (fmap (L.modL textLens (\t -> t `B.append` stamp `B.append` " < " `B.append` n `B.append` "> " `B.append` B.unwords cs `B.append` "\n")))
+                      (fmap (L.modL textLens (\t -> t `B.append` stamp `B.append` " < " `B.append` n `B.append` "> " `B.append` B.unwords (cs++ts) `B.append` "\n")))
       ) tm
   return ()
 processIrc _ m@(I.Message _ I.ERROR _) =
