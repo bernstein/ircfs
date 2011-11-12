@@ -18,12 +18,11 @@ import qualified Data.Time as T
 import qualified Data.Time.Format as T
 import qualified System.Fuse as F
 import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad (foldM_, foldM, mapM_, when)
-import Data.Maybe (maybe, maybeToList)
+import Control.Monad (foldM, when)
+import Data.Maybe (maybeToList)
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
 import Data.Attoparsec as A
-import Data.Attoparsec.Enumerator as A
 import qualified Network.Socket.Enumerator as E
 import qualified Data.Enumerator as E hiding (drop)
 import qualified Data.Enumerator.List as EL
@@ -78,9 +77,9 @@ processTmsg _ (F.Treaddir _) = do
   return (F.Rreaddir ds)
 
 -- process Twrite, usually appends to files
-processTmsg ircoutc (F.Twrite "/ctl" s offset) = do
+processTmsg ircoutc (F.Twrite "/ctl" s _) = do
   -- Todo if a msg is longer than 512 then split it into chunks
-  maybe 
+  _ <- maybe 
     (return F.Rerror)
     (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.toByteString.toMessage $c) 0))
     (A.maybeResult $ A.parse I.parseCtl s)
@@ -118,9 +117,9 @@ processIrc ircoutc (I.Message _ I.PING (I.Params _ (Just p))) = do
     stamp <- timeStamp
     let cmd = "pong " `B.append` p `B.append` "\n"
         off = fromIntegral . B.length $ cmd
-        log = stamp `B.append` " " `B.append` cmd
+        s = stamp `B.append` " " `B.append` cmd
     _ <- processTmsg ircoutc (F.Twrite "/ctl" cmd off)
-    appendPong log
+    appendPong s
 processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params [] (Just new))) = do
   yourNick <- (nick.connection) <$> get
   if n == yourNick
@@ -167,7 +166,7 @@ processIrc _ (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (I.Params (c:cs) t
   let ts = maybeToList t
   maybe (return ()) (\k -> do
       modify $ L.modL (targetLens k.connectionLens) 
-                      (fmap (L.modL textLens (\t -> t `B.append` stamp `B.append` " < " `B.append` n `B.append` "> " `B.append` B.unwords (cs++ts) `B.append` "\n")))
+                      (fmap (L.modL textLens (\s -> s `B.append` stamp `B.append` " < " `B.append` n `B.append` "> " `B.append` B.unwords (cs++ts) `B.append` "\n")))
       ) tm
   return ()
 processIrc _ m@(I.Message _ I.ERROR _) =
