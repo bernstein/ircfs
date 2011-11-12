@@ -5,6 +5,7 @@ where
 import           Prelude hiding ((.), id)
 import           Control.Category
 import           Data.Monoid
+import           Data.Maybe
 import           Control.Applicative
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BS
@@ -19,6 +20,7 @@ import           Test.QuickCheck hiding (property)
 
 -- message    =  [ ":" prefix SPACE ] command [ params ] crlf
 genMessage :: Gen B.ByteString
+                          -- promote
 genMessage = BS.concat <$> sequence [pre , genCommandStr, ps, pure "\r\n"]
   where pre = oneof [ pure mempty
                     , B.append ":" <$> (B.append <$> genPrefix <*> pure " ")]
@@ -195,6 +197,10 @@ specs = describe "Message" [
 maybeP ::  A.Parser r -> BS.ByteString -> Maybe r
 maybeP p s = A.maybeResult $ A.feed (A.parse p s) mempty
 
+successfullyParsed p = isJust . maybeP p
+
+prop_parsed = forAll genMessage (successfullyParsed I.message)
+
 {-
 idempotent :: Eq a => (a -> a) -> a -> Bool
 idempotent e a = e (e a) == e a
@@ -208,5 +214,7 @@ main = do
   quickCheckWith stdArgs { maxSuccess = 10000, maxSize = 300 } (
         (label "prop_equal_command" prop_equal_command)
     .&. (label "prop_equal_prefix" prop_equal_prefix)
+    .&. (label "prop_parsed" prop_parsed)
+    .&. (label "prop_idempotent_message" prop_idempotent_message)
     .&. (label "prop_idempotent_params" prop_idempotent_params))
 

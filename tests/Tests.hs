@@ -6,20 +6,17 @@ import Control.Applicative hiding (many)
 import Data.Monoid
 import Data.List (foldl')
 import Data.Attoparsec
-import           Data.Attoparsec.Char8 (char8)
+import Data.Attoparsec.Char8 (char8)
 import Test.QuickCheck
-import Network.IRC.Message
+import qualified Network.IRC.Message as I
 import System.Random (Random(..), RandomGen)
 import Data.Word (Word8)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B hiding (map)
 
-newtype Params = Params { unParams :: [B.ByteString] }
-  deriving (Show, Eq, Ord)
-
-instance Arbitrary Params where
+instance Arbitrary I.Params where
   -- XXX TODO fix mE
-  arbitrary = Params <$> listOf1 arbNick
+  arbitrary = I.Params <$> undefined <*> undefined
 
 arbNick :: Gen B.ByteString
 arbNick = BS.cons <$> letter <*> lnss
@@ -71,44 +68,43 @@ special = elements [45,91,93,96,92,94,95,123,124,125]
 lns :: Gen Word8
 lns = frequency [(1, letter), (1, number), (1, special)]
 
-instance Arbitrary Prefix where
-  arbitrary = oneof [ PrefixServer <$> arbServer
-                    , PrefixNick <$> arbNick <*> arbMaybeUser <*> arbMaybeHost
+instance Arbitrary I.Prefix where
+  arbitrary = oneof [ I.PrefixServer <$> arbServer
+                    , I.PrefixNick <$> arbNick <*> arbMaybeUser <*> arbMaybeHost
                     ]
 
-instance Arbitrary Command where
-  arbitrary = oneof . map pure $
-              [PASS ,NICK ,USER ,OPER ,MODE ,SERVICE ,QUIT ,SQUIT ,JOIN ,PART 
-              ,NAMES ,KICK ,PRIVMSG ,NOTICE ,MOTD ,TIME ,WHO ,PING ,AWAY 
-              ,TOPIC ,PONG ,INVITE ,WHOIS ,ERROR ]
+instance Arbitrary I.Command where
+  arbitrary = elements
+          [ I.PASS ,I.NICK ,I.USER ,I.OPER ,I.MODE ,I.SERVICE ,I.QUIT ,I.SQUIT 
+          , I.JOIN ,I.PART, I.NAMES ,I.KICK ,I.PRIVMSG ,I.NOTICE ,I.MOTD
+          , I.TIME ,I.WHO ,I.PING ,I.AWAY ,I.TOPIC ,I.PONG ,I.INVITE ,I.WHOIS 
+          ,I.ERROR ]
 
 instance Arbitrary B.ByteString where
   arbitrary = B.pack <$> arbitrary
 
-instance Arbitrary Message where
-  arbitrary = Message <$> arbitrary <*> arbitrary <*> ps
-    where ps = filter (not . B.null) . unParams <$> arbitrary
+instance Arbitrary I.Message where
+  arbitrary = I.Message <$> arbitrary <*> arbitrary <*> arbitrary
 
-prop_message :: Message -> Bool
+prop_message :: I.Message -> Bool
 prop_message m = 
-  Just m == maybeResult ( parse message (toByteString m))
+  Just m == maybeResult ( parse I.message (I.toByteString m))
 
-prop_command :: Command -> Bool
+prop_command :: I.Command -> Bool
 prop_command c = 
-  Just c == maybeResult (feed (parse command (B.pack (show c))) B.empty)
+  Just c == maybeResult (feed (parse I.command (B.pack (show c))) B.empty)
 
-prop_prefix :: Prefix -> Bool
+prop_prefix :: I.Prefix -> Bool
 prop_prefix c = 
-  Just c == maybeResult (feed (parse (char8 ':' *> prefix) (prefixToByteString c `B.append` " ")) B.empty)
+  Just c == maybeResult (feed (parse (char8 ':' *> I.prefix) (I.prefixToByteString c `B.append` " ")) B.empty)
 
-prop_params :: Params -> Bool
+prop_params :: I.Params -> Bool
 prop_params ps =
-  Just p == maybeResult (feed (parse params (paramsToByteString p)) B.empty)
-    where p = unParams ps
+  Just ps == maybeResult (feed (parse I.params (I.paramsToByteString ps)) mempty)
 
 main :: IO ()
 main =
-  quickCheckWith (stdArgs { maxSuccess = 1000, maxSize = 200 }) $
+  quickCheckWith (stdArgs { maxSuccess = 10000, maxSize = 200 }) $
       (label "prop_message" prop_message)
   .&. (label "prop_prefix" prop_prefix)
   .&. (label "prop_command" prop_command)
