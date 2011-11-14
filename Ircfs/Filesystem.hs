@@ -21,6 +21,7 @@ module Ircfs.Filesystem
   , stat
   , rootDirFiles
   , subDirFiles
+  , readDir
 
   , appendRaw
   , appendEvent
@@ -30,6 +31,7 @@ module Ircfs.Filesystem
 
 import           Prelude hiding ((.), id, read)
 import qualified Prelude as P
+import           Control.Arrow
 import           Control.Applicative
 import           Control.Category
 import           Control.Monad.State (modify)
@@ -37,6 +39,7 @@ import qualified Data.Lens.Common as L
 import           Data.Monoid
 import           Data.Char (isNumber)
 import qualified Data.ByteString.Char8 as B
+import qualified Data.IntMap as IM
 
 import qualified System.Fuse as F
 import qualified System.Fuse.Request as F
@@ -128,10 +131,9 @@ fileStat Qctl {} = F.defaultFileStat { F.statFileMode = filemode Qrootctl }
 fileStat q       = F.defaultFileStat { F.statFileMode = filemode q }
 
 stat :: IrcfsState -> FilePath -> Maybe F.FileStat
-stat (IrcfsState NotConnected _ _) _ = Nothing
-stat s@(IrcfsState con _ _) p = maybePlus1 <$> m <*> x
+stat st p = maybePlus1 <$> m <*> x
   where m = fromFilePath p
-        x = stat' s =<< m
+        x = stat' st =<< m
         -- add 1 for newline charakter, XXX find a better way
         maybePlus1 Qnick s = L.modL statFileSizeL (+1) s
         maybePlus1 Qname {} s = L.modL statFileSizeL (+1) s
@@ -139,20 +141,20 @@ stat s@(IrcfsState con _ _) p = maybePlus1 <$> m <*> x
 
 stat' :: IrcfsState -> Qreq -> Maybe F.FileStat
 stat' f Qroot = Just $ F.defaultDirStat 
-                                    { F.statFileMode = filemode Qroot 
-                                    , F.statFileOwner = fromIntegral $ userID f
-                                    , F.statFileGroup = fromIntegral $ groupID f
-                                    }
+                            { F.statFileMode = filemode Qroot 
+                            , F.statFileOwner = fromIntegral $ userID f
+                            , F.statFileGroup = fromIntegral $ groupID f
+                            }
 stat' f Qdir {} = Just $ F.defaultDirStat 
-                                    { F.statFileMode = filemode Qroot 
-                                    , F.statFileOwner = fromIntegral $ userID f
-                                    , F.statFileGroup = fromIntegral $ groupID f
-                                    }
+                            { F.statFileMode = filemode Qroot 
+                            , F.statFileOwner = fromIntegral $ userID f
+                            , F.statFileGroup = fromIntegral $ groupID f
+                            }
 stat' f Qctl {} = Just $ F.defaultFileStat 
-                                    { F.statFileMode = filemode Qrootctl 
-                                    , F.statFileOwner = fromIntegral $ userID f
-                                    , F.statFileGroup = fromIntegral $ groupID f
-                                    }
+                            { F.statFileMode = filemode Qrootctl 
+                            , F.statFileOwner = fromIntegral $ userID f
+                            , F.statFileGroup = fromIntegral $ groupID f
+                            }
 stat' f q =
   let mn = fromIntegral . B.length <$> read' f q
       s = F.defaultFileStat { F.statFileMode = filemode q 
@@ -165,25 +167,40 @@ statFileSizeL :: L.Lens F.FileStat S.FileOffset
 statFileSizeL = L.lens F.statFileSize (\x s -> s { F.statFileSize = x })
 
 readF :: IrcfsState -> FilePath -> S.ByteCount -> S.FileOffset -> Maybe B.ByteString
-readF s@(IrcfsState con _ _) p bc off = cut <$> (read' s =<< fromFilePath p)
+readF s p bc off = cut <$> (read' s =<< fromFilePath p)
   where cut = B.take (fromIntegral bc) . B.drop (fromIntegral off)
 
 read' :: IrcfsState -> Qreq -> Maybe B.ByteString
-read' (IrcfsState con _ _) Qroot      = Nothing
-read' (IrcfsState con _ _) Qrootctl   = Just mempty
-read' (IrcfsState con _ _) Qevent     = Just $ eventFile con
-read' (IrcfsState con _ _) Qraw       = Just $ rawFile con
-read' (IrcfsState con _ _) Qnick      = Just $ B.append (nick con) "\n"
-read' (IrcfsState con _ _) Qpong      = Just $ pongFile con
-read' (IrcfsState con _ _) Qdir {}    = Nothing
-read' (IrcfsState con _ _) Qctl {}    = Just mempty
-read' (IrcfsState con _ _) (Qname 0)  = Just . (`B.append` "\n") . addr $ con
-read' (IrcfsState con _ _) (Qname k)  = 
-  ((`B.append` "\n") . targetName) <$> L.getL (targetLens k) con
-read' (IrcfsState con _ _) (Qusers 0) = Just mempty
-read' (IrcfsState con _ _) (Qusers k) = users <$> L.getL (targetLens k) con
-read' (IrcfsState con _ _) (Qdata 0)  = Just mempty
-read' (IrcfsState con _ _) (Qdata k)  = text <$> L.getL (targetLens k) con
+read' _ Qroot        = Nothing
+read' _ Qrootctl     = Just mempty
+read' con Qevent     = Just $ eventFile con
+read' con Qraw       = Just $ rawFile con
+read' con Qnick      = Just $ mappend (nick con) "\n"
+read' con Qpong      = Just $ pongFile con
+read' _ Qdir {}      = Nothing
+read' con Qctl {}    = Just mempty
+read' con (Qname 0)  = Just . (`mappend` "\n") . addr $ con
+read' con (Qname k)  = 
+  ((`mappend` "\n") . targetName) <$> L.getL (targetLens k) con
+read' _ (Qusers 0)   = Just mempty
+read' con (Qusers k) = users <$> L.getL (targetLens k) con
+read' _ (Qdata 0)    = Just mempty
+read' con (Qdata k)  = text <$> L.getL (targetLens k) con
+
+readDir' :: IrcfsState -> Qreq -> [(FilePath, F.FileStat)]
+readDir' st Qroot = 
+  let ks = IM.keys (targets st)
+      rootDir = map (showFilepath &&& fileStat) rootDirFiles
+      subDirs = map (\x -> (show x,F.defaultDirStat)) ks
+  in  [(".", F.defaultDirStat), ("..", F.defaultDirStat), 
+            ("0",F.defaultDirStat) ] ++ rootDir ++ subDirs
+readDir' st Qdir {} = 
+  let subDir = map (showFilepath &&& fileStat) subDirFiles
+  in [(".", F.defaultDirStat), ("..",F.defaultDirStat)] ++ subDir
+readDir' _ _ = []
+
+readDir :: IrcfsState -> FilePath -> [(FilePath, F.FileStat)]
+readDir st p = maybe [] (readDir' st) (fromFilePath p)
 
 {-
 - uses readHelper
@@ -196,15 +213,15 @@ statHelper (Qname k) con = targetName con
 -- readHelper (Qname k) con =
 
 appendRaw :: B.ByteString -> Ircfs ()
-appendRaw s = modify $ L.modL (rawLens.connectionLens) (`B.append` s)
+appendRaw s = modify $ L.modL rawLens (`mappend` s)
 
 appendEvent :: B.ByteString -> Ircfs ()
-appendEvent s = modify $ L.modL (eventLens.connectionLens) (`B.append` s)
+appendEvent s = modify $ L.modL eventLens (`mappend` s)
 
 writeNick :: B.ByteString -> Ircfs ()
-writeNick = modify . L.modL (nickLens.connectionLens) . const
+writeNick = modify . L.modL nickLens . const
 
 appendPong :: B.ByteString -> Ircfs ()
-appendPong s = modify $ L.modL (pongLens.connectionLens) (`B.append` s)
+appendPong s = modify $ L.modL pongLens (`mappend` s)
 
 

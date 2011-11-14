@@ -20,13 +20,12 @@ module Ircfs.Types
   , Ircfs(..)
   , io
   , Qreq(..)
-  , Connection(..)
   , File
   , Target(..)
   , Targets
   , To(..)
 
-  , connectionLens
+  --, connectionLens
   , addrLens
   , nickLens
   , targetLens
@@ -59,14 +58,27 @@ import qualified Data.Map as M
 
 -- | IrcfsState, the irc file system state.
 data IrcfsState = IrcfsState
-    { connection :: Connection
+    { --connection :: Connection
+      addr :: File
+    , nick :: File
+    --, lnick :: String
+    , targets :: Targets -- M.Map Int Target
+    -- readable Files in the root dir
+    -- , ctlFile :: B.ByteString -- reading provides command history ?
+    -- , commandHistoryFile
+    , eventFile :: File -- everything
+    , pongFile :: File -- every time a pong is send
+    , rawFile :: File
+    , nextDirNames :: [Int]
+    , targetMap :: M.Map B.ByteString Int -- map directory number to target id
+
     -- , fsreq :: C.Chan FsRequest -- > move to IrcfsState
     , userID :: Int
     , groupID :: Int
     } 
 
-connectionLens :: L.Lens IrcfsState Connection
-connectionLens = L.lens connection (\x s -> s { connection = x })
+--connectionLens :: L.Lens IrcfsState Connection
+--connectionLens = L.lens connection (\x s -> s { connection = x })
 
 io :: MonadIO m => IO a -> m a
 io = liftIO
@@ -99,54 +111,31 @@ data Qreq = Qroot      -- "/"
           | Qdata  { dirNr :: Int } -- "/n/data"
   deriving (Show, Read, Eq, Ord)
 
--- |
--- A Connection
---
-data Connection = 
-    NotConnected
-  | Connection
-    { addr :: File
-    , nick :: File
-    --, lnick :: String
-    , targets :: Targets -- M.Map Int Target
-    , sock :: N.Socket
-    -- readable Files in the root dir
-    -- , ctlFile :: B.ByteString -- reading provides command history ?
-    -- , commandHistoryFile
-    , eventFile :: File -- everything
-    , pongFile :: File -- every time a pong is send
-    , rawFile :: File
-    , nextDirNames :: [Int]
-    , targetMap :: M.Map B.ByteString Int -- map directory number to target id
-    }
-
 type File = B.ByteString
 
 --ctlLens :: L.Lens Connection File
 --ctlLens = L.lens ctlFile (\x s -> s { ctlFile = x })
-addrLens :: L.Lens Connection File
+addrLens :: L.Lens IrcfsState File
 addrLens = L.lens addr (\x s -> s { addr = x })
-nickLens :: L.Lens Connection File
+nickLens :: L.Lens IrcfsState File
 nickLens = L.lens nick (\x s -> s { nick = x })
-targetsLens :: L.Lens Connection Targets
+targetsLens :: L.Lens IrcfsState Targets
 targetsLens = L.lens targets (\x s -> s { targets = x })
-targetLens :: Int -> L.Lens Connection (Maybe Target)
+targetLens :: Int -> L.Lens IrcfsState (Maybe Target)
 targetLens k = L.intMapLens k . targetsLens
-sockLens :: L.Lens Connection N.Socket
-sockLens = L.lens sock (\x s -> s { sock = x })
-eventLens :: L.Lens Connection File
+eventLens :: L.Lens IrcfsState File
 eventLens = L.lens eventFile (\x s -> s { eventFile = x })
-pongLens :: L.Lens Connection File
+pongLens :: L.Lens IrcfsState File
 pongLens = L.lens pongFile (\x s -> s { pongFile = x })
-rawLens :: L.Lens Connection File
+rawLens :: L.Lens IrcfsState File
 rawLens = L.lens rawFile (\x s -> s { rawFile = x })
-nextDirNamesLens :: L.Lens Connection [Int]
+nextDirNamesLens :: L.Lens IrcfsState [Int]
 nextDirNamesLens = L.lens nextDirNames (\x s -> s { nextDirNames = x})
 
-targetMapLens :: L.Lens Connection (M.Map B.ByteString Int)
+targetMapLens :: L.Lens IrcfsState (M.Map B.ByteString Int)
 targetMapLens = L.lens targetMap (\x s -> s { targetMap = x})
 
-targetMapLens' :: B.ByteString -> L.Lens Connection (Maybe Int)
+targetMapLens' :: B.ByteString -> L.Lens IrcfsState (Maybe Int)
 targetMapLens' s = L.mapLens s . targetMapLens
 
 type Targets = IntMap Target -- change to (IntMap Target)

@@ -1,4 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- -----------------------------------------------------------------------------
+-- |
+-- Module      :  Main
+-- Copyright   :  (c) Andreas-Christoph Bernstein 2011
+-- License     :  BSD3-style (see LICENSE)
+--
+-- Maintainer  :  andreas.bernstein@googlemail.com
+-- Stability   :  unstable
+-- Portability :  not portable
+--
+--------------------------------------------------------------------------------
 module Main where
 
 import Prelude hiding ((.), id)
@@ -29,15 +40,12 @@ import Ircfs.Process
 import qualified Ircfs.CmdLine as O
 import qualified System.Fuse.Request as F
 
---newtype IrcOut = IrcOut { unIrcOut :: C.Chan I.Message }
--- process :: Enumeratee F.Request I.Message IO a
-
 chanToIter2 :: C.Chan a -> E.Iteratee a IO ()
 chanToIter2 c = go
   where
     go = EL.head >>= maybe go (\x -> liftIO (C.writeChan c x) >> go)
 
--- | Listens on the sockets, writes received messages to ircinc
+-- | Listens on the sockets, writes received messages to fsReq
 ircReader :: C.Chan F.Request -> N.Socket -> IO ()
 ircReader fsReq socket =
   E.run_ $ E.enumSocket 1024 socket E.$$ irclines E.=$ iterFuseWriteFs_ fsReq
@@ -45,7 +53,7 @@ ircReader fsReq socket =
 ircWriter :: N.Socket -> IrcOut -> IO ()
 ircWriter s out = mapM_ (N.sendAll s) =<< C.getChanContents (unIrcOut out) 
 
--- | Initialize the filesystem.
+-- | Initialize file system.
 fsInit :: C.Chan F.Request -> O.Config -> IO ()
 fsInit fsReq cfg = do
   s <- getSocket (O.addr cfg) (read (O.port cfg))
@@ -53,23 +61,6 @@ fsInit fsReq cfg = do
   gid <- fromIntegral <$> S.getEffectiveGroupID
   -- userEntry <- S.getUserEntryForID (fromIntegral uid)
   name <- S.getEffectiveUserName
-  let st = IrcfsState 
-            { connection = 
-                      Connection
-                      { addr = B.pack . O.addr $ cfg
-                      , nick = B.pack . O.nick $ cfg
-                      , targets = mempty
-                      , sock = s
-                      , eventFile = ""
-                      , pongFile = ""
-                      , rawFile = ""
-                      , nextDirNames = [1..100]
-                      , targetMap = mempty
-                      }
-            , userID = uid
-            , groupID = gid
-            }
-
   _ <- C.forkIO $ ircReader fsReq s
 
   let nickMsg = B.pack $ "NICK " ++ O.nick cfg ++ "\r\n" 
@@ -80,6 +71,19 @@ fsInit fsReq cfg = do
   _ <- C.forkIO $ ircWriter s ircoutc
 
   rs <- C.getChanContents fsReq
+  let st = IrcfsState 
+            { addr = B.pack . O.addr $ cfg
+            , nick = B.pack . O.nick $ cfg
+            , targets = mempty
+            , eventFile = ""
+            , pongFile = ""
+            , rawFile = ""
+            , nextDirNames = [1..100]
+            , targetMap = mempty
+            , userID = uid
+            , groupID = gid
+            }
+
   _ <- C.forkIO $ runIrcfs st (mapM_ (process ircoutc) rs) >> return ()
   return ()
 

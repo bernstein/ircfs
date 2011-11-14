@@ -59,6 +59,10 @@ deriving instance Show OpenFileFlags
 
 fromRmsg :: Rmsg -> Either Errno B.ByteString
 fromRmsg (Rread s) = Right s
+fromRmsg (Rwrite _) = error "fromRmsg: implement me"
+fromRmsg Ropen = error "fromRmsg: implement me"
+fromRmsg (Rstat _) = error "fromRmsg: implement me"
+fromRmsg (Rreaddir _) = error "fromRmsg: implement me"
 fromRmsg Rerror = Left eNOENT
 
 fuseRequest_ :: C.Chan Request -> Tmsg -> IO ()

@@ -343,19 +343,19 @@ toByteString :: Message -> B.ByteString
 --toByteString (Message Nothing (CmdNumericReply _) ps) = "toByteString: CmdNumericReply not implemented yet"
 toByteString (Message Nothing (CmdString _) ps) = "toByteString: CmdString not Implemented yet"
 toByteString (Message Nothing cmd ps) = 
-  commandToByteString cmd `B.append` paramsToByteString ps `B.append` "\r\n"
-toByteString (Message (Just p) cmd ps) =
-  ":" 
-  `B.append` prefixToByteString p
-  `B.append` " "
-  `B.append` commandToByteString cmd
-  `B.append` paramsToByteString ps
-  `B.append` "\r\n"
+  commandToByteString cmd `mappend` paramsToByteString ps `mappend` "\r\n"
+toByteString (Message (Just p) cmd ps) = mconcat [
+    ":" 
+  , prefixToByteString p
+  , " "
+  , commandToByteString cmd
+  , paramsToByteString ps
+  , "\r\n"]
 
 commandToByteString :: Command -> B.ByteString
 commandToByteString (CmdNumericReply x)
-  | x < 10 = "00" `B.append` B.pack (show x)
-  | x < 100 = "0" `B.append` B.pack (show x)
+  | x < 10 = "00" `mappend` B.pack (show x)
+  | x < 100 = "0" `mappend` B.pack (show x)
   | otherwise = B.pack (show x)
 commandToByteString c  = B.pack . show $ c
 
@@ -363,16 +363,12 @@ commandToByteString c  = B.pack . show $ c
 prefixToByteString :: Prefix -> B.ByteString
 prefixToByteString (PrefixServer s) = s
 prefixToByteString (PrefixNick n Nothing Nothing) = n
-prefixToByteString (PrefixNick n (Just u) Nothing) =
-  n `B.append` "!" `B.append` u
-prefixToByteString (PrefixNick n Nothing (Just h)) =
-  n `B.append` "@" `B.append` h
-prefixToByteString (PrefixNick n (Just u) (Just h)) =
-  n `B.append` "!" `B.append` u `B.append` "@" `B.append` h
+prefixToByteString (PrefixNick n (Just u) Nothing) = n `mappend` "!" `mappend` u
+prefixToByteString (PrefixNick n Nothing (Just h)) = n `mappend` "@" `mappend` h
+prefixToByteString (PrefixNick n (Just u) (Just h)) = mconcat [n,"!",u,"@",h]
 
 paramsToByteString :: Params -> B.ByteString
 paramsToByteString (Params [] Nothing) = mempty
-paramsToByteString (Params m@(x:_) Nothing) = " " `B.append` B.unwords m
-paramsToByteString (Params [] (Just t)) = " :" `B.append` t
-paramsToByteString (Params m@(x:_) (Just t)) = " " `B.append` B.unwords m
-                                                `B.append` " :" `B.append` t
+paramsToByteString (Params m@(x:_) Nothing) = " " `mappend` B.unwords m
+paramsToByteString (Params [] (Just t)) = " :" `mappend` t
+paramsToByteString (Params m@(x:_) (Just t)) = mconcat [" ",B.unwords m," :",t]

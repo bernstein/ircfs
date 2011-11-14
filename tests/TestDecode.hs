@@ -21,6 +21,7 @@ import           Test.QuickCheck hiding (property)
 -- message    =  [ ":" prefix SPACE ] command [ params ] crlf
 genMessage :: Gen B.ByteString
                           -- promote
+                          -- sequenceA
 genMessage = BS.concat <$> sequence [pre , genCommandStr, ps, pure "\r\n"]
   where pre = oneof [ pure mempty
                     , B.append ":" <$> (B.append <$> genPrefix <*> pure " ")]
