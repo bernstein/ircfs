@@ -38,6 +38,7 @@ module Ircfs.Types
   , nextDirNamesLens
   , usersLens
   , textLens
+  , IrcOut(..)
   ) where
 
 import Prelude hiding ((.), id)
@@ -46,6 +47,7 @@ import Control.Applicative
 import qualified System.Posix.Types as S
 import qualified Data.ByteString.Char8 as B
 import qualified Network.Socket as N hiding (recv)
+import qualified Network.IRC.Message as I
 import qualified Data.Rope as R
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
@@ -180,6 +182,9 @@ textLens = L.lens text (\x s -> s { text = x })
 
 data To = TChannel | TUser
   deriving (Show, Read, Eq)
+
+newtype IrcOut = IrcOut { unIrcOut :: C.Chan B.ByteString }
+newtype IrcIn  = IrcIn { unIrcIn :: C.Chan I.Message }
 
 -- data In  = FsRequest F.Request
 --          | Cmd CtlCommand

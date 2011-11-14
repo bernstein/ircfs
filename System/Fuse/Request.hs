@@ -70,6 +70,7 @@ fuseRequest c m = do
   C.writeChan c (ReqRep m mvar)
   C.takeMVar mvar
 
+defaultDirStat :: F.FileStat
 defaultDirStat = defaultFileStat
                { F.statEntryType = F.Directory
                , F.statFileMode = 0o555
@@ -77,6 +78,7 @@ defaultDirStat = defaultFileStat
                , F.statFileSize = 4096
                }
 
+defaultFileStat :: F.FileStat
 defaultFileStat = F.FileStat 
                 { F.statEntryType = F.RegularFile
                 , F.statFileMode = 0o222
@@ -98,7 +100,7 @@ fsOpen c p m f = do
   case x of
     Ropen -> return (Right IrcfsFH)
     Rerror -> return (Left F.eNOENT)
-    otherwise -> return (Left F.eNOENT)
+    _ -> return (Left F.eNOENT)
 
 fsRead :: C.Chan Request -> FilePath -> IrcfsFH -> S.ByteCount ->
             S.FileOffset -> IO (Either Errno B.ByteString)
@@ -107,16 +109,16 @@ fsRead c p _ bc off = do
   case x of
     Rread s -> return (Right s)
     Rerror -> return (Left F.eNOENT)
-    otherwise -> return (Left F.eNOENT)
+    _ -> return (Left F.eNOENT)
 
 fsWrite :: C.Chan Request -> FilePath -> IrcfsFH -> 
           B.ByteString -> S.FileOffset -> IO (Either Errno S.ByteCount)
-fsWrite c p h s off = do
+fsWrite c p _ s off = do
   x <- fuseRequest c (Twrite p s off)
   case x of
     Rwrite n -> return (Right n)
     Rerror -> return (Left F.eNOENT)
-    otherwise -> return (Left F.eNOENT)
+    _ -> return (Left F.eNOENT)
 
 fsStat :: C.Chan Request -> FilePath -> IO (Either Errno F.FileStat)
 fsStat c p = do
@@ -124,7 +126,7 @@ fsStat c p = do
   case x of
     Rstat s -> return (Right s)
     Rerror -> return (Left F.eNOENT)
-    otherwise -> return (Left F.eNOENT)
+    _ -> return (Left F.eNOENT)
 
 fsReadDir :: C.Chan Request -> FilePath ->
             IO (Either Errno [(FilePath, F.FileStat)])
@@ -133,4 +135,4 @@ fsReadDir c p = do
   case x of
     Rreaddir s -> return (Right s)
     Rerror -> return (Left F.eNOENT)
-    otherwise -> return (Left F.eNOENT)
+    _ -> return (Left F.eNOENT)

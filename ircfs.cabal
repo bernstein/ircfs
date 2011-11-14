@@ -1,5 +1,7 @@
 name:               ircfs
-version:            0.0.1
+version:            0.1.0
+synopsis:           IRC file system
+homepage:           http://github.com/bernstein/ircfs/
 license:            BSD3
 license-file:       LICENSE
 category:           IRC
@@ -8,15 +10,13 @@ maintainer:         Andreas-Christoph Bernstein <andreas.bernstein@googlemail.co
 copyright:          Andreas-Christoph Bernstein 2011
 stability:          Beta
 tested-with:        GHC == 7.0.3
-synopsis:           IRC file system
 cabal-version:      >= 1.6
-homepage:           http://github.com/bernstein/ircfs/
 build-type:         Simple
 description:        Ircfs is an irc client with a fuse file system interface.
 extra-source-files: 
-  README
+  README.markdown
   tests/Makefile
-  tests/TestMessage.hs
+  tests/TestDecode.hs
 
 source-repository head
   type: git
@@ -58,3 +58,4 @@ executable ircfs
     Ircfs.Ctl
     Ircfs.Types
     Ircfs.CmdLine
+    Ircfs.Process
