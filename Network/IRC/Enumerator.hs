@@ -2,17 +2,10 @@
 module Network.IRC.Enumerator
 where
 
-import Control.Applicative
 import qualified Network.Socket as N hiding (recv)
-import qualified Network.Socket.ByteString  as N (recv, sendAll)
-import qualified Network.Socket.Enumerator as E
 import qualified Data.Enumerator as E hiding (drop)
-import qualified Data.Enumerator.List as EL
 import qualified Data.Enumerator.Binary as EB
 import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy as BL
-import Data.Word (Word8)
-import Data.Attoparsec as A
 import Data.Attoparsec.Enumerator as A
 
 import qualified Network.IRC.Message as I

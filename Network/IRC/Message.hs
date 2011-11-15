@@ -40,7 +40,6 @@ import           Data.Attoparsec.Char8 (char8)
 import Data.Word (Word8)
 import qualified Data.ByteString.Char8 as B hiding (map)
 import qualified Data.ByteString as BS
-import           Data.Maybe (maybeToList)
 import           Data.Monoid
 
 -- RFC 1459
@@ -341,7 +340,7 @@ isNospcrlfcl = not.(`elem` [0,10,13,32,58])
 
 toByteString :: Message -> B.ByteString
 --toByteString (Message Nothing (CmdNumericReply _) ps) = "toByteString: CmdNumericReply not implemented yet"
-toByteString (Message Nothing (CmdString _) ps) = "toByteString: CmdString not Implemented yet"
+toByteString (Message Nothing (CmdString _) _) = "toByteString: CmdString not Implemented yet"
 toByteString (Message Nothing cmd ps) = 
   commandToByteString cmd `mappend` paramsToByteString ps `mappend` "\r\n"
 toByteString (Message (Just p) cmd ps) = mconcat [
@@ -369,6 +368,6 @@ prefixToByteString (PrefixNick n (Just u) (Just h)) = mconcat [n,"!",u,"@",h]
 
 paramsToByteString :: Params -> B.ByteString
 paramsToByteString (Params [] Nothing) = mempty
-paramsToByteString (Params m@(x:_) Nothing) = " " `mappend` B.unwords m
+paramsToByteString (Params m@(_:_) Nothing) = " " `mappend` B.unwords m
 paramsToByteString (Params [] (Just t)) = " :" `mappend` t
-paramsToByteString (Params m@(x:_) (Just t)) = mconcat [" ",B.unwords m," :",t]
+paramsToByteString (Params m@(_:_) (Just t)) = mconcat [" ",B.unwords m," :",t]

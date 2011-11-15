@@ -29,11 +29,13 @@ module Ircfs.Types
   , addrLens
   , nickLens
   , targetLens
+  , tagLens
   , eventLens
   , pongLens
   , targetMapLens
   , targetMapLens'
   , rawLens
+  , nameLens
   , nextDirNamesLens
   , usersLens
   , textLens
@@ -43,15 +45,11 @@ module Ircfs.Types
 import Prelude hiding ((.), id)
 import Control.Category
 import Control.Applicative
-import qualified System.Posix.Types as S
 import qualified Data.ByteString.Char8 as B
-import qualified Network.Socket as N hiding (recv)
-import qualified Network.IRC.Message as I
-import qualified Data.Rope as R
+--import qualified Network.IRC.Message as I
+--import qualified Data.Rope as R
 import qualified Control.Concurrent.Chan as C
-import qualified Control.Concurrent as C
 import Control.Monad.State
-import qualified System.Fuse as F
 import qualified Data.Lens.Common as L
 import Data.IntMap
 import qualified Data.Map as M
@@ -158,8 +156,8 @@ data Target = Target
 
 tagLens :: L.Lens Target Int
 tagLens = L.lens tag (\x s -> s { tag = x })
-toLens :: L.Lens Target To
-toLens = L.lens to (\x s -> s { to = x })
+--toLens :: L.Lens Target To
+--toLens = L.lens to (\x s -> s { to = x })
 nameLens :: L.Lens Target File
 nameLens = L.lens targetName (\x s -> s { targetName = x })
 --usersLens :: L.Lens Target [String]
@@ -173,7 +171,6 @@ data To = TChannel | TUser
   deriving (Show, Read, Eq)
 
 newtype IrcOut = IrcOut { unIrcOut :: C.Chan B.ByteString }
-newtype IrcIn  = IrcIn { unIrcIn :: C.Chan I.Message }
 
 -- data In  = FsRequest F.Request
 --          | Cmd CtlCommand

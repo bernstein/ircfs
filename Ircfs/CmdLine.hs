@@ -22,6 +22,7 @@ module Ircfs.CmdLine
 
 import System.Console.CmdArgs -- (Data, Typeable)
 
+showVersion :: String
 showVersion = "0.0.1"
 
 data Config = Config 

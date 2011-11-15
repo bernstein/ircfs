@@ -81,21 +81,35 @@ parseCtl = awayCmd
       <|> whoCmd
       <|> unknownCmd
 
+awayCmd :: A8.Parser CtlCommand
 awayCmd      = Away <$> (A8.string "away" *> I.space *> remainder)
+backCmd :: A8.Parser CtlCommand
 backCmd      = Back <$ A8.string "back"
+debugCmd :: A8.Parser CtlCommand
 debugCmd     = Debug <$ A8.string "debug"
+joinCmd :: A8.Parser CtlCommand
 joinCmd      = Join <$> (A8.string "join" *> I.space *> I.channel)
+meCmd :: A8.Parser CtlCommand
 meCmd        = Me <$> (A8.string "me" *> I.space *> remainder)
+msgCmd :: A8.Parser CtlCommand
 msgCmd       = Privmsg <$> (A8.string "msg" *> I.space *> (I.nick <|> I.channel)) 
                         <*> (I.space *> remainder)
+namesCmd :: A8.Parser CtlCommand
 namesCmd     = Names <$> (A8.string "names" *> I.space *> remainder)
+nCmd :: A8.Parser CtlCommand
 nCmd         = Names <$> (A8.string "n" *> I.space *> remainder)
+nickCmd :: A8.Parser CtlCommand
 nickCmd      = Nick <$> (A8.string "nick" *> I.space *> I.nick)
+partCmd :: A8.Parser CtlCommand
 partCmd      = Part <$> (A8.string "part" *> I.space *> remainder)
+pongCmd :: A8.Parser CtlCommand
 pongCmd      = Pong <$> (A8.string "pong" *> I.space *> remainder)
+quitCmd :: A8.Parser CtlCommand
 quitCmd      = Quit <$> (A8.string "quit" *> I.space *> remainder)
 --removeCmd    = Remove <$> (A8.string "remove" *> I.space *> remainder)
+whoCmd :: A8.Parser CtlCommand
 whoCmd       = Who  <$> (A8.string "whois" *> I.space *> I.nick)
+unknownCmd :: A8.Parser CtlCommand
 unknownCmd   = Unknown <$> remainder
 
 remainder :: A.Parser B.ByteString

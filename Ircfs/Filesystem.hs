@@ -88,10 +88,12 @@ rootDirFiles = [Qrootctl, Qevent, Qnick, Qraw, Qpong]
 subDirFiles :: [Qreq]
 subDirFiles = [Qctl 0, Qdata 0, Qname 0, Qusers 0]
 
+{-
 files :: [Qreq]
 files = [ Qroot, Qrootctl, Qevent, Qraw, Qnick, Qpong, Qdir 0, Qctl 0, Qname 0
         , Qusers 0, Qdata 0
         ]
+-}
 
 -- XXX change to full FilePath ???
 showFile :: Qreq -> B.ByteString
@@ -178,7 +180,7 @@ read' con Qraw       = Just $ rawFile con
 read' con Qnick      = Just $ mappend (nick con) "\n"
 read' con Qpong      = Just $ pongFile con
 read' _ Qdir {}      = Nothing
-read' con Qctl {}    = Just mempty
+read' _ Qctl {}    = Just mempty
 read' con (Qname 0)  = Just . (`mappend` "\n") . addr $ con
 read' con (Qname k)  = 
   ((`mappend` "\n") . targetName) <$> L.getL (targetLens k) con
@@ -194,7 +196,7 @@ readDir' st Qroot =
       subDirs = map (\x -> (show x,F.defaultDirStat)) ks
   in  [(".", F.defaultDirStat), ("..", F.defaultDirStat), 
             ("0",F.defaultDirStat) ] ++ rootDir ++ subDirs
-readDir' st Qdir {} = 
+readDir' _ Qdir {} = 
   let subDir = map (showFilepath &&& fileStat) subDirFiles
   in [(".", F.defaultDirStat), ("..",F.defaultDirStat)] ++ subDir
 readDir' _ _ = []
