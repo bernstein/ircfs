@@ -57,10 +57,13 @@ processTmsg _ (F.Treaddir p) = F.Rreaddir . (`readDir` p) <$> get
 -- process Twrite, usually appends to files
 processTmsg ircoutc (F.Twrite "/ctl" s _) = do
   -- Todo if a msg is longer than 512 then split it into chunks
+  let mR = A.maybeResult $ A.parse I.parseCtl s
+      -- XXX TODO: process ctl
+      -- mR >>= processCtl
   _ <- maybe 
     (return F.Rerror)
     (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.toByteString.toMessage $c) 0))
-    (A.maybeResult $ A.parse I.parseCtl s)
+    mR
   return . F.Rwrite . fromIntegral . B.length $ s
 processTmsg _ (F.Twrite "/event" s _) = do
   appendEvent s
@@ -131,6 +134,17 @@ processIrc (I.Message (Just (I.PrefixNick n _ _)) I.PART (I.Params (c:_) _)) = d
         let s = B.pack $ "del " ++ show k ++ " "
         appendEvent (mconcat [s,c,"\n"])
       ) m
+  return []
+processIrc (I.Message Nothing I.PRIVMSG (I.Params (c:cs) t)) = do
+  stamp <- timeStamp
+  tm <- L.getL (targetMapLens' c) <$> get
+  n <- nick <$> get
+  let ts = maybeToList t
+
+  maybe (return ()) (\k -> do
+      modify $ L.modL (targetLens k)
+                      (fmap (L.modL textLens (\s -> mconcat [s,stamp," < ",n,"> ",B.unwords (cs++ts),"\n"])))
+      ) tm
   return []
 processIrc (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (I.Params (c:cs) t)) = do
   stamp <- timeStamp
