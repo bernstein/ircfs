@@ -226,4 +226,10 @@ writeNick = modify . L.modL nickLens . const
 appendPong :: B.ByteString -> Ircfs ()
 appendPong s = modify $ L.modL pongLens (`mappend` s)
 
-
+--write :: IrcfsState -> Qreq -> B.ByteString -> S.FileOffset -> (IrcfsState, Either Errno S.ByteCount)
+--write :: IrcfsState -> Qreq -> B.ByteString -> S.FileOffset -> (IrcfsState, Maybe S.ByteCount)
+--write st Qrootctl _ off = (st,Just off)
+--write st Qevent s off =
+--  let st' = L.modL eventLens (`mappend` s) st
+--  in (st', Just off)
+--
