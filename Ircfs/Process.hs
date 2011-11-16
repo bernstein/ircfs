@@ -62,7 +62,7 @@ processTmsg ircoutc (F.Twrite "/ctl" s _) = do
       -- mR >>= processCtl
   _ <- maybe 
     (return F.Rerror)
-    (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.toByteString.toMessage $c) 0))
+    (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.encode.toMessage $c) 0))
     mR
   return . F.Rwrite . fromIntegral . B.length $ s
 processTmsg _ (F.Twrite "/event" s _) = do
@@ -82,7 +82,7 @@ processTmsg ircoutc (F.Twrite "/ircin" s _) = do
   appendRaw ("<<<" `mappend` s `mappend` "\n")
   let m = A.maybeResult $ A.feed (A.parse I.message s) "\n"
   ms' <- maybe (return []) processIrc m
-  mapM_ (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.toByteString c) 0)) ms'
+  mapM_ (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.encode c) 0)) ms'
   return . F.Rwrite . fromIntegral . B.length $ s
 processTmsg _ (F.Twrite {}) = return F.Rerror
 
@@ -157,7 +157,7 @@ processIrc (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (I.Params (c:cs) t))
       ) tm
   return []
 processIrc m@(I.Message _ I.ERROR _) = do
-  appendEvent (mconcat ["error ",I.toByteString m,"\n"])
+  appendEvent (mconcat ["error ",I.encode m,"\n"])
   return []
 processIrc _ = return []
 
