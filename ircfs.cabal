@@ -25,11 +25,15 @@ source-repository head
 library
   exposed-modules:
     Network.IRC.Message
+    Network.IRC.Message.Encode
+    Network.IRC.Message.Parser
+    Network.IRC.Message.Types
     Network.IRC.Enumerator
     System.Fuse.Request
   build-depends:
     base,
     bytestring >= 0.9,
+    blaze-builder,
     attoparsec,
     HFuse,
     unix,
@@ -52,6 +56,9 @@ executable ircfs
   ghc-options:        -Wall -threaded
   other-modules:
     Network.IRC.Message
+    Network.IRC.Message.Encode
+    Network.IRC.Message.Parser
+    Network.IRC.Message.Types
     Network.IRC.Enumerator
     System.Fuse.Request
     Filesystem.IRC.IRCcon
