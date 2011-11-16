@@ -10,6 +10,7 @@ import           Control.Applicative
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BS
 import qualified Network.IRC.Message as I
+import qualified Network.IRC.Message.Encode as I
 import qualified Data.Attoparsec as A
 import           Data.Word (Word8)
 import           System.Random (RandomGen, Random(..))
@@ -173,7 +174,7 @@ prop_idempotent_params = forAll genParamsStr (\ps -> (e =<< e ps) == e ps)
 
 prop_idempotent_message :: Property
 prop_idempotent_message = forAll genMessage (\ms -> (e =<< e ms) == e ms)
-  where e = fmap I.toByteString . maybeP I.message
+  where e = fmap I.encode . maybeP I.message
 
 getCommandStr :: Gen B.ByteString
 getCommandStr = elements $
