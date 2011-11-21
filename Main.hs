@@ -45,7 +45,7 @@ chanToIter2 c = go
   where
     go = EL.head >>= maybe go (\x -> liftIO (C.writeChan c x) >> go)
 
--- | Listens on the sockets, writes received messages to fsReq
+-- | Listens on the socket, writes received messages to fsReq
 ircReader :: C.Chan F.Request -> N.Socket -> IO ()
 ircReader fsReq socket =
   E.run_ $ E.enumSocket 1024 socket E.$$ irclines E.=$ iterFuseWriteFs_ fsReq
