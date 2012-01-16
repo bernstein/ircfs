@@ -61,7 +61,6 @@ executable ircfs
     Network.IRC.Message.Types
     Network.IRC.Enumerator
     System.Fuse.Request
-    Filesystem.IRC.IRCcon
     Ircfs.Ctl
     Ircfs.Types
     Ircfs.CmdLine
