@@ -82,6 +82,7 @@ fsInit fsReq cfg = do
             , targetMap = mempty
             , userID = uid
             , groupID = gid
+            , inodes = mempty
             }
 
   _ <- C.forkIO $ runIrcfs st (mapM_ (process ircoutc) rs) >> return ()
