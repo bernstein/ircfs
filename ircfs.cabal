@@ -66,3 +66,4 @@ executable ircfs
     Ircfs.Types
     Ircfs.CmdLine
     Ircfs.Process
+    Ircfs.Inode
