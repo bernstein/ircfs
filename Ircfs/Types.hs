@@ -16,6 +16,7 @@
 module Ircfs.Types
   (
     IrcfsState(..)
+  , newFS
   , runIrcfs
   , Ircfs(..)
   , io
@@ -40,12 +41,18 @@ module Ircfs.Types
   , usersLens
   , textLens
   , IrcOut(..)
+  , liftLens
+  , inodesL
+  , inodeL
+  , statL
+  , dataL
   ) where
 
 import Prelude hiding ((.), id)
 import Control.Category
 import Control.Applicative
 import qualified Data.ByteString.Char8 as B
+import Foreign.C.Types (CTime)
 --import qualified Network.IRC.Message as I
 --import qualified Data.Rope as R
 import qualified Control.Concurrent.Chan as C
@@ -54,6 +61,8 @@ import qualified Data.Lens.Common as L
 import Data.IntMap
 import qualified Data.Map as M
 import Ircfs.Inode
+import Data.Monoid
+import qualified System.Fuse as F
 
 -- | IrcfsState, the irc file system state.
 data IrcfsState = IrcfsState
@@ -75,6 +84,7 @@ data IrcfsState = IrcfsState
     , userID :: Int
     , groupID :: Int
     , inodes :: M.Map Qreq Inode
+    , start :: CTime
     } 
 
 --connectionLens :: L.Lens IrcfsState Connection
@@ -123,8 +133,11 @@ targetsLens :: L.Lens IrcfsState Targets
 targetsLens = L.lens targets (\x s -> s { targets = x })
 targetLens :: Int -> L.Lens IrcfsState (Maybe Target)
 targetLens k = L.intMapLens k . targetsLens
+
 eventLens :: L.Lens IrcfsState File
+--eventLens = L.lens eventFile (\x s -> s { eventFile = x })
 eventLens = L.lens eventFile (\x s -> s { eventFile = x })
+
 pongLens :: L.Lens IrcfsState File
 pongLens = L.lens pongFile (\x s -> s { pongFile = x })
 rawLens :: L.Lens IrcfsState File
@@ -173,6 +186,37 @@ data To = TChannel | TUser
   deriving (Show, Read, Eq)
 
 newtype IrcOut = IrcOut { unIrcOut :: C.Chan B.ByteString }
+
+liftLens :: Applicative f => L.Lens a b -> L.Lens (f a) (f b)
+liftLens l = L.lens (fmap (L.getL l)) (liftA2 (L.setL l))
+
+inodesL :: L.Lens IrcfsState (M.Map Qreq Inode)
+inodesL = L.lens inodes (\x s -> s { inodes = x })
+
+inodeL :: Qreq -> L.Lens IrcfsState (Maybe Inode)
+inodeL p = L.mapLens p . inodesL
+
+statL :: Qreq -> L.Lens IrcfsState (Maybe F.FileStat)
+statL p = liftLens iStatL . inodeL p
+
+dataL :: Qreq -> L.Lens IrcfsState (Maybe B.ByteString)
+dataL p = liftLens iDataL . inodeL p
+
+newFS :: IrcfsState
+newFS = IrcfsState 
+          { addr = mempty
+          , nick = mempty
+          , targets = mempty
+          , eventFile = mempty
+          , pongFile = mempty
+          , rawFile = mempty
+          , nextDirNames = [1..100]
+          , targetMap = mempty
+          , userID = 0
+          , groupID = 0
+          , inodes = mempty
+          , start = 0
+          }
 
 -- data In  = FsRequest F.Request
 --          | Cmd CtlCommand
