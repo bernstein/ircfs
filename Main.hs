@@ -65,7 +65,7 @@ fsInit fsReq cfg = do
 
   let nickMsg = B.pack $ "NICK " ++ O.nick cfg ++ "\r\n" 
   N.sendAll s nickMsg
-  let userMsg = B.pack $ "USER "++name++" 0 * :" ++ O.nick cfg ++"\r\n"
+  let userMsg = B.pack $ "USER " ++ name ++ " 0 * :" ++ O.nick cfg ++"\r\n"
   N.sendAll s userMsg
   ircoutc <- IrcOut <$> C.newChan
   _ <- C.forkIO $ ircWriter s ircoutc
@@ -105,7 +105,7 @@ main = N.withSocketsDo $ do
             , F.fuseWrite         = F.fsWrite fsReq
             , F.fuseSetFileSize   = fsTruncate
             }
-  withArgs [O.mtpt args] $ F.fuseMain ops F.defaultExceptionHandler
+  withArgs [O.mtpt args, "-d"] $ F.fuseMain ops F.defaultExceptionHandler
 
 fsOpenDirectory :: FilePath -> IO Errno
 fsOpenDirectory  = const (return eOK)

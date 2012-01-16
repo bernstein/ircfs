@@ -17,15 +17,19 @@ module Ircfs.Filesystem
   
     readF
   , showFilepath
+  , fromFilePath
   , fileStat
   , stat
   , rootDirFiles
   , subDirFiles
   , readDir
+  , write
 
   , appendRaw
   , appendEvent
   , appendPong
+  , appendData
+  , appendUsers
   , writeNick
   ) where
 
@@ -38,6 +42,7 @@ import           Control.Monad.State (modify)
 import qualified Data.Lens.Common as L
 import           Data.Monoid
 import           Data.Char (isNumber)
+import           Data.Maybe (maybeToList)
 import qualified Data.ByteString.Char8 as B
 import qualified Data.IntMap as IM
 
@@ -47,6 +52,7 @@ import qualified System.Posix.Types as S
 import           System.FilePath
 
 import           Ircfs.Types
+import qualified Network.IRC.Message as I
 
 -- file to Qreq
 fileToQreq :: Int -> String -> Maybe Qreq
@@ -217,19 +223,38 @@ statHelper (Qname k) con = targetName con
 appendRaw :: B.ByteString -> Ircfs ()
 appendRaw s = modify $ L.modL rawLens (`mappend` s)
 
-appendEvent :: B.ByteString -> Ircfs ()
-appendEvent s = modify $ L.modL eventLens (`mappend` s)
+appendEvent :: B.ByteString -> IrcfsState -> IrcfsState
+appendEvent s = L.modL eventLens (`mappend` s)
 
-writeNick :: B.ByteString -> Ircfs ()
-writeNick = modify . L.modL nickLens . const
+writeNick :: B.ByteString -> IrcfsState -> IrcfsState
+writeNick = L.modL nickLens . const
 
-appendPong :: B.ByteString -> Ircfs ()
-appendPong s = modify $ L.modL pongLens (`mappend` s)
+appendPong :: B.ByteString -> IrcfsState -> IrcfsState
+appendPong s = L.modL pongLens (`mappend` s)
 
---write :: IrcfsState -> Qreq -> B.ByteString -> S.FileOffset -> (IrcfsState, Either Errno S.ByteCount)
---write :: IrcfsState -> Qreq -> B.ByteString -> S.FileOffset -> (IrcfsState, Maybe S.ByteCount)
---write st Qrootctl _ off = (st,Just off)
---write st Qevent s off =
---  let st' = L.modL eventLens (`mappend` s) st
---  in (st', Just off)
---
+appendData :: Int -> B.ByteString -> Ircfs ()
+appendData k s = modify $ L.modL (targetLens k) (fmap (L.modL textLens (`mappend` s)))
+
+appendUsers :: Int -> B.ByteString -> Ircfs ()
+appendUsers k s = modify $ L.modL (targetLens k) (fmap (L.modL usersLens (`mappend` s)))
+
+type Timestamp = B.ByteString
+write :: IrcfsState -> Timestamp -> B.ByteString -> Qreq -> (IrcfsState, [I.Message])
+write st _ _ Qrootctl = (st, mempty)
+write st t xs Qevent = (appendEvent xs st,[])
+write st t xs Qnick = (writeNick xs st,[])
+write st t xs Qpong = (appendPong xs st,[])
+write st (stamp) xs (Qdata k) = 
+  let st' = L.modL (targetLens k) (fmap (L.modL textLens (`mappend` line ))) st
+      targets = maybeToList . fmap targetName . L.getL (targetLens k) $ st
+      line = mconcat [stamp, " < ",me,"> ", xs]
+      me = nick st
+      n = fromIntegral (B.length line)
+      msg = privmsg targets xs
+  in  (st', [msg])
+write st _ _ _ = (st, mempty)
+
+privmsg :: [B.ByteString] -> B.ByteString -> I.Message
+privmsg targets x = I.Message Nothing I.PRIVMSG (I.Params targets (Just x))
+
+-- writeF :: FilePath -> S.ByteCount -> B.ByteString -> Ircfs [I.Message]
