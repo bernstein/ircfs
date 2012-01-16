@@ -21,7 +21,7 @@ import Control.Category
 import Control.Applicative
 import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad.State (get, modify)
+import Control.Monad.State (get, put, modify)
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
 import qualified Data.Lens.Common as L
@@ -38,6 +38,8 @@ import qualified Network.IRC.Message as I
 import Ircfs.Ctl as I
 import Ircfs.Types
 import Ircfs.Filesystem
+
+-- IrcfsState -> F.Request -> (IrcfsState, Message)
 
 -- process :: Enumeratee F.Request I.Message IO a
 --process :: IrcfsState -> F.Request -> IO (Maybe B.ByteString, IrcfsState)
@@ -65,15 +67,6 @@ processTmsg ircoutc (F.Twrite "/ctl" s _) = do
     (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.encode.toMessage $c) 0))
     mR
   return . F.Rwrite . fromIntegral . B.length $ s
-processTmsg _ (F.Twrite "/event" s _) = do
-  appendEvent s
-  return . F.Rwrite . fromIntegral . B.length $ s
-processTmsg _ (F.Twrite "/nick" s _) = do
-  writeNick s
-  return . F.Rwrite . fromIntegral . B.length $ s
-processTmsg _ (F.Twrite "/pong" s _) = do
-  appendPong s
-  return . F.Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (F.Twrite "/raw" s _) = do
   appendRaw (">>>" `mappend` s)
   io . C.writeChan (unIrcOut ircoutc) $ s
@@ -84,6 +77,18 @@ processTmsg ircoutc (F.Twrite "/ircin" s _) = do
   ms' <- maybe (return []) processIrc m
   mapM_ (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.encode c) 0)) ms'
   return . F.Rwrite . fromIntegral . B.length $ s
+processTmsg ircoutc t@(F.Twrite p s _) = do
+  st <- get
+  stamp <- timeStamp
+  let x = write st stamp s <$> fromFilePath p
+  case x of
+    Just (st', []) -> put st'
+    Just (st', msg:_) -> do
+      put st'
+      _ <- processTmsg ircoutc (F.Twrite "/raw" (I.encode msg) 0)
+      return ()
+    _ -> return ()
+  return . F.Rwrite . fromIntegral . B.length $ s
 processTmsg _ (F.Twrite {}) = return F.Rerror
 
 -- | Process incomming irc messages.
@@ -93,25 +98,25 @@ processIrc (I.Message _ I.PING (I.Params _ (Just p))) = do
   stamp <- timeStamp
   let s = mconcat [stamp," pong ",p,"\n"]
       msg = I.Message Nothing I.PONG (I.Params [p] Nothing)
-  appendPong s
+  modify . appendPong $ s
   return [msg]
 processIrc (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params [] (Just new))) = do
   yourNick <- nick <$> get
   if n == yourNick
     then do
-      appendEvent . mconcat $ ["You're now known as ",new,"\n"]
-      writeNick new
+      modify . appendEvent . mconcat $ ["You're now known as ",new,"\n"]
+      modify . writeNick $ new
     else
-      appendEvent . mconcat $ [n," changed nick to ",new,"\n"]
+      modify . appendEvent . mconcat $ [n," changed nick to ",new,"\n"]
   return []
 processIrc (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params (new:_) _)) = do
   yourNick <- nick <$> get
   if n == yourNick
     then do
-      appendEvent (mconcat ["You're now known as ",new,"\n"])
-      writeNick new
+      modify . appendEvent $ (mconcat ["You're now known as ",new,"\n"])
+      modify . writeNick $ new
     else
-      appendEvent . mconcat $ [n," changed nick to ",new,"\n"]
+      modify . appendEvent . mconcat $ [n," changed nick to ",new,"\n"]
   return []
 processIrc (I.Message (Just (I.PrefixNick n _ _)) I.JOIN (I.Params (c:_) _)) = do
   yourNick <- nick <$> get
@@ -121,7 +126,7 @@ processIrc (I.Message (Just (I.PrefixNick n _ _)) I.JOIN (I.Params (c:_) _)) = d
                     (Just (Target k TChannel c mempty mempty))
     modify $ L.setL (targetMapLens' c) (Just k)
     let s = B.pack $ "new " ++ show k ++ " "
-    appendEvent $ s `mappend` c `mappend` "\n"
+    modify . appendEvent $ s `mappend` c `mappend` "\n"
   return []
 processIrc (I.Message (Just (I.PrefixNick n _ _)) I.PART (I.Params (c:_) _)) = do
   yourNick <- nick <$> get
@@ -132,7 +137,7 @@ processIrc (I.Message (Just (I.PrefixNick n _ _)) I.PART (I.Params (c:_) _)) = d
         modify (L.setL (targetMapLens' c) Nothing)
         freeDirName k
         let s = B.pack $ "del " ++ show k ++ " "
-        appendEvent (mconcat [s,c,"\n"])
+        modify . appendEvent $ (mconcat [s,c,"\n"])
       ) m
   return []
 processIrc (I.Message Nothing I.PRIVMSG (I.Params (c:cs) t)) = do
@@ -157,7 +162,7 @@ processIrc (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (I.Params (c:cs) t))
       ) tm
   return []
 processIrc m@(I.Message _ I.ERROR _) = do
-  appendEvent (mconcat ["error ",I.encode m,"\n"])
+  modify . appendEvent $ (mconcat ["error ",I.encode m,"\n"])
   return []
 processIrc _ = return []
 
@@ -174,4 +179,7 @@ timeStamp :: MonadIO m => m B.ByteString
 timeStamp = do
   now <- liftIO T.getCurrentTime
   return . B.pack $ T.formatTime defaultTimeLocale "%H:%M" now
+
+privmsg :: [B.ByteString] -> B.ByteString -> I.Message
+privmsg targets x = I.Message Nothing I.PRIVMSG (I.Params targets (Just x))
 
