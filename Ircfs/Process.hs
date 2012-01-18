@@ -54,7 +54,7 @@ processTmsg _ (F.Tread p bc off) = do
   st <- get
   maybe (return F.Rerror) (return . F.Rread) (readF st p bc off)
 processTmsg _ F.Topen {} = return F.Ropen
-processTmsg _ (F.Tstat p) = maybe F.Rerror F.Rstat . (`stat` p) <$> get
+processTmsg _ (F.Tstat p) = maybe F.Rerror F.Rstat . (\st -> stat st =<< parsePath p) <$> get
 processTmsg _ (F.Treaddir p) = F.Rreaddir . (`readDir` p) <$> get
 -- process Twrite, usually appends to files
 processTmsg ircoutc (F.Twrite "/ctl" s _) = do
@@ -68,11 +68,15 @@ processTmsg ircoutc (F.Twrite "/ctl" s _) = do
     mR
   return . F.Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (F.Twrite "/raw" s _) = do
-  appendRaw (">>>" `mappend` s)
+  time <- io now
+  modify $ touch Qraw time 
+         . append Qraw (">>>" `mappend` s)
   io . C.writeChan (unIrcOut ircoutc) $ s
   return . F.Rwrite . fromIntegral . B.length $ s
 processTmsg ircoutc (F.Twrite "/ircin" s _) = do
-  appendRaw ("<<<" `mappend` s `mappend` "\n")
+  time <- io now
+  modify $ touch Qraw time
+         . append Qraw ("<<<" `mappend` s `mappend` "\n")
   let m = A.maybeResult $ A.feed (A.parse I.message s) "\n"
   ms' <- maybe (return []) processIrc m
   mapM_ (\c -> processTmsg ircoutc (F.Twrite "/raw" (I.encode c) 0)) ms'
@@ -80,7 +84,8 @@ processTmsg ircoutc (F.Twrite "/ircin" s _) = do
 processTmsg ircoutc t@(F.Twrite p s _) = do
   st <- get
   stamp <- timeStamp
-  let x = write st stamp s <$> fromFilePath p
+  time <- io now
+  let x = write st stamp s <$> parsePath p
   case x of
     Just (st', []) -> put st'
     Just (st', msg:_) -> do
@@ -96,84 +101,87 @@ processIrc :: I.Message -> Ircfs [I.Message]
 -- example: PING :irc.funet.fi ; Ping message sent by server
 processIrc (I.Message _ I.PING (I.Params _ (Just p))) = do
   stamp <- timeStamp
+  time <- io now
   let s = mconcat [stamp," pong ",p,"\n"]
       msg = I.Message Nothing I.PONG (I.Params [p] Nothing)
-  modify . appendPong $ s
+  modify $ touch Qpong time 
+         . append Qpong s
   return [msg]
 processIrc (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params [] (Just new))) = do
-  yourNick <- nick <$> get
+  st <- get
+  time <- io now
+  let yourNick = maybe mempty id (L.getL nickLens st) -- nick st
   if n == yourNick
     then do
-      modify . appendEvent . mconcat $ ["You're now known as ",new,"\n"]
-      modify . writeNick $ new
+      modify $ 
+               touch Qevent time
+             . append Qevent (mconcat ["You're now known as ",new,"\n"])
+             . touch Qnick time
+             . substitute Qnick new
     else
-      modify . appendEvent . mconcat $ [n," changed nick to ",new,"\n"]
+      modify $ append Qevent (mconcat [n," changed nick to ",new,"\n"])
+             . touch Qevent time
   return []
 processIrc (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params (new:_) _)) = do
-  yourNick <- nick <$> get
+  st <- get
+  time <- io now
+  let yourNick = maybe mempty id (L.getL nickLens st) -- nick st
   if n == yourNick
     then do
-      modify . appendEvent $ (mconcat ["You're now known as ",new,"\n"])
-      modify . writeNick $ new
+      modify $ append Qevent (mconcat ["You're now known as ",new,"\n"])
+             . touch Qnick time
+             . touch Qevent time
+             . substitute Qnick new
     else
-      modify . appendEvent . mconcat $ [n," changed nick to ",new,"\n"]
+      modify $ 
+               append Qevent (mconcat [n," changed nick to ",new,"\n"])
+             . touch Qevent time
   return []
 processIrc (I.Message (Just (I.PrefixNick n _ _)) I.JOIN (I.Params (c:_) _)) = do
-  yourNick <- nick <$> get
-  when (n == yourNick) $ do
-    k <- nextDirName
-    modify $ L.setL (targetLens k) 
-                    (Just (Target k TChannel c mempty mempty))
-    modify $ L.setL (targetMapLens' c) (Just k)
-    let s = B.pack $ "new " ++ show k ++ " "
-    modify . appendEvent $ s `mappend` c `mappend` "\n"
+  st <- get
+  time <- io now
+  let yourNick = L.getL nickLens st
+  when (Just n == yourNick) $ do
+    modify $ insertChannel c time
   return []
 processIrc (I.Message (Just (I.PrefixNick n _ _)) I.PART (I.Params (c:_) _)) = do
-  yourNick <- nick <$> get
-  when (n == yourNick) $ do
-    m <- L.getL (targetMapLens' c) <$> get
-    maybe (return ()) (\k -> do
-        modify (L.setL (targetLens k) Nothing)
-        modify (L.setL (targetMapLens' c) Nothing)
-        freeDirName k
-        let s = B.pack $ "del " ++ show k ++ " "
-        modify . appendEvent $ (mconcat [s,c,"\n"])
-      ) m
+  st <- get
+  time <- io now
+  let yourNick = maybe mempty id (L.getL nickLens st) -- nick st
+  when (n == yourNick) $ 
+    modify $ removeChannel c time
   return []
 processIrc (I.Message Nothing I.PRIVMSG (I.Params (c:cs) t)) = do
   stamp <- timeStamp
+  time <- io now
   tm <- L.getL (targetMapLens' c) <$> get
-  n <- nick <$> get
+  st <- get
+  let n = maybe mempty id (L.getL nickLens st) -- nick st
   let ts = maybeToList t
-
   maybe (return ()) (\k -> do
-      modify $ L.modL (targetLens k)
-                      (fmap (L.modL textLens (\s -> mconcat [s,stamp," < ",n,"> ",B.unwords (cs++ts),"\n"])))
+      modify $ 
+          touch (Qdata k) time
+        . append (Qdata k) (mconcat [stamp," < ",n,"> ",B.unwords (cs++ts),"\n"])
       ) tm
   return []
 processIrc (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (I.Params (c:cs) t)) = do
   stamp <- timeStamp
+  time <- io now
   tm <- L.getL (targetMapLens' c) <$> get
   let ts = maybeToList t
 
   maybe (return ()) (\k -> do
-      modify $ L.modL (targetLens k) 
-                      (fmap (L.modL textLens (\s -> mconcat [s,stamp," < ",n,"> ",B.unwords (cs++ts),"\n"])))
+      modify $ 
+          touch (Qdata k) time
+        . append (Qdata k) (mconcat [stamp," < ",n,"> ",B.unwords (cs++ts),"\n"])
       ) tm
   return []
 processIrc m@(I.Message _ I.ERROR _) = do
-  modify . appendEvent $ (mconcat ["error ",I.encode m,"\n"])
+  time <- io now
+  modify $ touch Qevent time
+         . append Qevent (mconcat ["error ",I.encode m,"\n"])
   return []
 processIrc _ = return []
-
-nextDirName :: Ircfs Int
-nextDirName = do
-  k <- (head . nextDirNames) <$> get
-  modify $ L.modL nextDirNamesLens tail
-  return k
-
-freeDirName :: Int -> Ircfs ()
-freeDirName = modify . L.modL nextDirNamesLens . (:)
 
 timeStamp :: MonadIO m => m B.ByteString
 timeStamp = do

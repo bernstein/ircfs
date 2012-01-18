@@ -17,6 +17,9 @@ import Control.Category
 import Control.Applicative
 import qualified Data.ByteString.Char8 as B
 import Foreign.C.Error
+import Foreign.C.Types (CTime)
+import qualified Data.Time as T
+import qualified Data.Time.Clock.POSIX as T
 import System.Posix.Types
 import qualified System.Posix.User as S
 import System.FilePath (takeBaseName)
@@ -30,6 +33,7 @@ import qualified Network.Socket.Enumerator as E
 import qualified Data.Enumerator as E hiding (drop)
 import qualified Data.Enumerator.List as EL
 import Data.Monoid
+import qualified Data.Lens.Common as L
 
 import qualified Network.Socket as N
 import qualified Network.Socket.ByteString  as N (sendAll)
@@ -37,6 +41,8 @@ import qualified Network.Socket.ByteString  as N (sendAll)
 import Network.IRC.Enumerator
 import Ircfs.Types
 import Ircfs.Process
+import Ircfs.Inode
+import Ircfs.Filesystem
 import qualified Ircfs.CmdLine as O
 import qualified System.Fuse.Request as F
 
@@ -57,8 +63,6 @@ ircWriter s out = mapM_ (N.sendAll s) =<< C.getChanContents (unIrcOut out)
 fsInit :: C.Chan F.Request -> O.Config -> IO ()
 fsInit fsReq cfg = do
   s <- getSocket (O.addr cfg) (read (O.port cfg))
-  uid <- fromIntegral <$> S.getEffectiveUserID
-  gid <- fromIntegral <$> S.getEffectiveGroupID
   -- userEntry <- S.getUserEntryForID (fromIntegral uid)
   name <- S.getEffectiveUserName
   _ <- C.forkIO $ ircReader fsReq s
@@ -71,20 +75,7 @@ fsInit fsReq cfg = do
   _ <- C.forkIO $ ircWriter s ircoutc
 
   rs <- C.getChanContents fsReq
-  let st = IrcfsState 
-            { addr = B.pack . O.addr $ cfg
-            , nick = B.pack . O.nick $ cfg
-            , targets = mempty
-            , eventFile = ""
-            , pongFile = ""
-            , rawFile = ""
-            , nextDirNames = [1..100]
-            , targetMap = mempty
-            , userID = uid
-            , groupID = gid
-            , inodes = mempty
-            }
-
+  st <- newFS (B.pack . O.addr $ cfg) (B.pack . O.nick $ cfg)
   _ <- C.forkIO $ runIrcfs st (mapM_ (process ircoutc) rs) >> return ()
   return ()
 
@@ -127,4 +118,35 @@ writeMany_ :: C.Chan F.Request -> [B.ByteString] -> IO (C.Chan F.Request)
 writeMany_ fsReq xs = foldM write_ fsReq xs
   where write_ c x = let off = fromIntegral (B.length x)
                      in  F.fuseRequest_ c (F.Twrite "/ircin" x off) >> return c
+
+newFS a n = do
+  uid <- fromIntegral <$> S.getEffectiveUserID
+  gid <- fromIntegral <$> S.getEffectiveGroupID
+  time <- now
+  let st = IrcfsState 
+          { addr = a
+          , targets = mempty
+          , nextDirNames = [0..100]
+          , targetMap = mempty
+          , userID = uid
+          , groupID = gid
+          , inodes = mempty
+          , start = time
+          }
+      emptyNode = setTimes time . chmod 0o440 $ mkInode (defaultFileStat st)
+      rwNode = chmod 0o660 emptyNode
+      wNode = chmod 0o220 emptyNode
+      nickNode = L.setL iDataL n emptyNode
+      dirNode = mkInode (defaultDirStat st)
+      insert = 
+          L.setL (inodeL Qevent) (Just emptyNode)
+        . L.setL (inodeL Qpong) (Just emptyNode)
+        . L.setL (inodeL Qraw) (Just rwNode)
+        . L.setL (inodeL Qnick) (Just nickNode)
+        . L.setL (inodeL Qrootctl) (Just wNode)
+        . L.setL (inodeL Qroot) (Just dirNode)
+        . insertChannel a time
+  return (insert st)
+
+-- touch :: Time -> Inode -> Inode
 
