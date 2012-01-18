@@ -31,6 +31,7 @@ module Ircfs.Inode
   , iStatAccessTimeL
   , iStatModificationTimeL
   , iStatStatusChangeTimeL
+  , chown, chgrp, chmod, setTimes
   ) where
 
 import Prelude hiding ((.), id)
@@ -130,3 +131,18 @@ iStatModificationTimeL = statModificationTimeL . iStatL
 
 iStatStatusChangeTimeL :: L.Lens Inode S.EpochTime
 iStatStatusChangeTimeL = statStatusChangeTimeL . iStatL
+
+chmod :: S.FileMode -> Inode -> Inode
+chmod = L.setL iStatFileModeL
+
+chown :: S.UserID -> Inode -> Inode
+chown = L.setL iStatFileOwnerL
+
+chgrp :: S.GroupID -> Inode -> Inode
+chgrp = L.setL iStatFileGroupL
+
+setTimes :: S.EpochTime -> Inode -> Inode
+setTimes time =
+      L.setL iStatModificationTimeL time
+    . L.setL iStatAccessTimeL time
+    . L.setL iStatStatusChangeTimeL time
