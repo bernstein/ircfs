@@ -17,7 +17,7 @@ module Ircfs.Filesystem
   
     readF
   , showFilepath
-  , fromFilePath
+  , parsePath
   , fileStat
   , stat
   , rootDirFiles
@@ -25,12 +25,11 @@ module Ircfs.Filesystem
   , readDir
   , write
 
-  , appendRaw
-  , appendEvent
-  , appendPong
-  , appendData
-  , appendUsers
-  , writeNick
+  , append
+  , substitute
+  , touch
+  , insertChannel
+  , removeChannel
   ) where
 
 import           Prelude hiding ((.), id, read)
@@ -45,6 +44,8 @@ import           Data.Char (isNumber)
 import           Data.Maybe (maybeToList)
 import qualified Data.ByteString.Char8 as B
 import qualified Data.IntMap as IM
+import qualified Data.Map as M
+import           Foreign.C.Types (CTime)
 
 import qualified System.Fuse as F
 import qualified System.Fuse.Request as F
@@ -52,6 +53,7 @@ import qualified System.Posix.Types as S
 import           System.FilePath
 
 import           Ircfs.Types
+import           Ircfs.Inode
 import qualified Network.IRC.Message as I
 
 -- file to Qreq
@@ -66,8 +68,8 @@ fileToQreq n "name"  = Just (Qname n)
 fileToQreq n "users" = Just (Qusers n)
 fileToQreq _ _       = Nothing
 
-fromFilePath :: FilePath -> Maybe Qreq
-fromFilePath p
+parsePath :: FilePath -> Maybe Qreq
+parsePath p
   | p == ""       = Nothing
   | p == "/"      = Just Qroot
   | p == "/ctl"   = Just Qrootctl
@@ -138,13 +140,11 @@ fileStat Qdir {} = F.defaultDirStat  { F.statFileMode = filemode Qroot }
 fileStat Qctl {} = F.defaultFileStat { F.statFileMode = filemode Qrootctl }
 fileStat q       = F.defaultFileStat { F.statFileMode = filemode q }
 
+{-
 stat :: IrcfsState -> FilePath -> Maybe F.FileStat
 stat st p = maybePlus1 <$> m <*> x
-  where m = fromFilePath p
+  where m = parsePath p
         x = stat' st =<< m
-        -- add 1 for newline charakter, XXX find a better way
-        maybePlus1 Qnick s = L.modL statFileSizeL (+1) s
-        maybePlus1 Qname {} s = L.modL statFileSizeL (+1) s
         maybePlus1 _ s = s
 
 stat' :: IrcfsState -> Qreq -> Maybe F.FileStat
@@ -173,88 +173,126 @@ stat' f q =
 
 statFileSizeL :: L.Lens F.FileStat S.FileOffset
 statFileSizeL = L.lens F.statFileSize (\x s -> s { F.statFileSize = x })
+-}
 
 readF :: IrcfsState -> FilePath -> S.ByteCount -> S.FileOffset -> Maybe B.ByteString
-readF s p bc off = cut <$> (read' s =<< fromFilePath p)
+readF s p bc off = cut <$> (read' s =<< parsePath p)
   where cut = B.take (fromIntegral bc) . B.drop (fromIntegral off)
 
 read' :: IrcfsState -> Qreq -> Maybe B.ByteString
 read' _ Qroot        = Nothing
-read' _ Qrootctl     = Just mempty
-read' con Qevent     = Just $ eventFile con
-read' con Qraw       = Just $ rawFile con
-read' con Qnick      = Just $ mappend (nick con) "\n"
-read' con Qpong      = Just $ pongFile con
+read' con Qrootctl   = L.getL (dataL Qrootctl) con
+read' con Qevent     = L.getL (dataL Qevent) con
+read' con Qpong      = L.getL (dataL Qpong) con
+read' con Qraw       = L.getL (dataL Qraw) con
+read' con Qnick      = L.getL (dataL Qnick) con
+read' con (Qname k)  = L.getL (dataL (Qname k)) con
+read' con (Qusers k) = L.getL (dataL (Qusers k)) con
+read' con (Qdata k)  = L.getL (dataL (Qdata k)) con
+read' _ Qctl {}      = Just mempty
 read' _ Qdir {}      = Nothing
-read' _ Qctl {}    = Just mempty
-read' con (Qname 0)  = Just . (`mappend` "\n") . addr $ con
-read' con (Qname k)  = 
-  ((`mappend` "\n") . targetName) <$> L.getL (targetLens k) con
-read' _ (Qusers 0)   = Just mempty
-read' con (Qusers k) = users <$> L.getL (targetLens k) con
-read' _ (Qdata 0)    = Just mempty
-read' con (Qdata k)  = text <$> L.getL (targetLens k) con
+read' _ _ = Nothing
 
 readDir' :: IrcfsState -> Qreq -> [(FilePath, F.FileStat)]
 readDir' st Qroot = 
   let ks = IM.keys (targets st)
       rootDir = map (showFilepath &&& fileStat) rootDirFiles
       subDirs = map (\x -> (show x,F.defaultDirStat)) ks
-  in  [(".", F.defaultDirStat), ("..", F.defaultDirStat), 
-            ("0",F.defaultDirStat) ] ++ rootDir ++ subDirs
+  in  [(".", F.defaultDirStat), ("..", F.defaultDirStat)] 
+      ++ rootDir ++ subDirs
 readDir' _ Qdir {} = 
   let subDir = map (showFilepath &&& fileStat) subDirFiles
   in [(".", F.defaultDirStat), ("..",F.defaultDirStat)] ++ subDir
 readDir' _ _ = []
 
 readDir :: IrcfsState -> FilePath -> [(FilePath, F.FileStat)]
-readDir st p = maybe [] (readDir' st) (fromFilePath p)
+readDir st p = maybe [] (readDir' st) (parsePath p)
 
-{-
-- uses readHelper
-statHelper :: Qreq -> Connection -> Int
-statHelper (Qname k) con = targetName con
--}
+append :: Qreq -> B.ByteString -> IrcfsState -> IrcfsState
+append p s = L.modL (dataL p) (`mappend` Just s)
 
--- might return empty string, if filepath is unknown 
--- readHelper :: Qreq -> (Connection -> B.ByteString)
--- readHelper (Qname k) con =
+substitute :: Qreq -> B.ByteString -> IrcfsState -> IrcfsState
+substitute p s = L.setL (dataL p) (Just s)
 
-appendRaw :: B.ByteString -> Ircfs ()
-appendRaw s = modify $ L.modL rawLens (`mappend` s)
-
-appendEvent :: B.ByteString -> IrcfsState -> IrcfsState
-appendEvent s = L.modL eventLens (`mappend` s)
-
-writeNick :: B.ByteString -> IrcfsState -> IrcfsState
-writeNick = L.modL nickLens . const
-
-appendPong :: B.ByteString -> IrcfsState -> IrcfsState
-appendPong s = L.modL pongLens (`mappend` s)
-
-appendData :: Int -> B.ByteString -> Ircfs ()
-appendData k s = modify $ L.modL (targetLens k) (fmap (L.modL textLens (`mappend` s)))
-
-appendUsers :: Int -> B.ByteString -> Ircfs ()
-appendUsers k s = modify $ L.modL (targetLens k) (fmap (L.modL usersLens (`mappend` s)))
+touch :: Qreq -> CTime -> IrcfsState -> IrcfsState
+touch p t = L.modL (inodeL p) (fmap (setTimes t))
 
 type Timestamp = B.ByteString
 write :: IrcfsState -> Timestamp -> B.ByteString -> Qreq -> (IrcfsState, [I.Message])
 write st _ _ Qrootctl = (st, mempty)
-write st t xs Qevent = (appendEvent xs st,[])
-write st t xs Qnick = (writeNick xs st,[])
-write st t xs Qpong = (appendPong xs st,[])
-write st (stamp) xs (Qdata k) = 
-  let st' = L.modL (targetLens k) (fmap (L.modL textLens (`mappend` line ))) st
-      targets = maybeToList . fmap targetName . L.getL (targetLens k) $ st
+write st t xs Qevent = (append Qevent xs st,[])
+write st t xs Qnick = (substitute Qnick xs st,[])
+write st t xs Qpong = (append Qpong xs st,[])
+write st stamp xs p@(Qdata k) = 
+  let targets = maybeToList . L.getL (dataL (Qname k)) $ st
       line = mconcat [stamp, " < ",me,"> ", xs]
-      me = nick st
+      me = maybe mempty id (L.getL nickLens st) -- nick st
       n = fromIntegral (B.length line)
       msg = privmsg targets xs
-  in  (st', [msg])
+  in  (append p line st, [msg])
 write st _ _ _ = (st, mempty)
 
 privmsg :: [B.ByteString] -> B.ByteString -> I.Message
 privmsg targets x = I.Message Nothing I.PRIVMSG (I.Params targets (Just x))
 
+insertChannel :: B.ByteString -> CTime -> IrcfsState -> IrcfsState
+insertChannel name time st = 
+  let 
+      k = head (nextDirNames st)
+      target = Target k TChannel
+      s = B.pack $ "new " ++ show k ++ " "
+
+      emptyNode = setTimes time . chmod 0o440
+        $ mkInode (defaultFileStat st)
+      rwNode = chmod 0o660 emptyNode
+      wNode = chmod 0o220 emptyNode
+      nameNode = L.setL iDataL name  emptyNode
+      dirNode = mkInode (defaultDirStat st)
+
+      insert = 
+              L.setL (targetLens k) (Just target)
+            . L.setL (targetMapLens' name) (Just k)
+
+            . L.setL (inodeL (Qname k)) (Just nameNode)
+            . L.setL (inodeL (Qusers k)) (Just emptyNode)
+            . L.setL (inodeL (Qdata k)) (Just rwNode)
+            . L.setL (inodeL (Qctl k)) (Just wNode)
+            . L.setL (inodeL (Qdir k)) (Just dirNode)
+
+            . append Qevent (s `mappend` name `mappend` "\n")
+            . L.modL nextDirNamesLens tail
+  in  insert st
+
+removeChannel :: B.ByteString -> CTime -> IrcfsState -> IrcfsState
+removeChannel name time st =
+  let
+      str k = B.pack $ "del " ++ show k ++ " "
+      text k = (mconcat [str k,name,"\n"])
+      del k = rmdir (Qdir k)
+            . L.setL (targetMapLens' name) Nothing
+            . rm (Qname k) . rm (Qusers k) . rm (Qdata k) . rm (Qctl k)
+            . append Qevent (text k)
+            . L.modL nextDirNamesLens (k:)
+  in  maybe st (\k -> del k st) 
+                (L.getL (targetMapLens' name) st)
+
 -- writeF :: FilePath -> S.ByteCount -> B.ByteString -> Ircfs [I.Message]
+
+-- (B.ByteString -> Maybe a, a -> B.ByteString)
+
+rm :: Qreq -> IrcfsState -> IrcfsState
+rm q = L.setL (inodeL q) Nothing
+
+rmdir :: Qreq -> IrcfsState -> IrcfsState
+rmdir (Qdir k) =  L.setL (targetLens k) Nothing . rm (Qdir k)
+rmdir _ = id
+
+stat :: IrcfsState -> Qreq -> Maybe F.FileStat
+--stat st RootCtl = Just $ defaultFileStat st
+stat st p = statFromInode <$> M.lookup p (inodes st)
+
+statFromInode (Inode st d) = 
+  if F.statEntryType st == F.Directory then st 
+  else st { F.statFileSize = fromIntegral (B.length d) }
+
+
