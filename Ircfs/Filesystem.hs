@@ -41,7 +41,7 @@ import           Control.Monad.State (modify)
 import qualified Data.Lens.Common as L
 import           Data.Monoid
 import           Data.Char (isNumber)
-import           Data.Maybe (maybeToList)
+import           Data.Maybe (maybeToList, fromMaybe)
 import qualified Data.ByteString.Char8 as B
 import qualified Data.IntMap as IM
 import qualified Data.Map as M
@@ -53,6 +53,7 @@ import qualified System.Posix.Types as S
 import           System.FilePath
 
 import           Ircfs.Types
+import           Ircfs.Misc
 import           Ircfs.Inode
 import qualified Network.IRC.Message as I
 
@@ -208,13 +209,13 @@ readDir' _ _ = []
 readDir :: IrcfsState -> FilePath -> [(FilePath, F.FileStat)]
 readDir st p = maybe [] (readDir' st) (parsePath p)
 
-append :: Qreq -> B.ByteString -> IrcfsState -> IrcfsState
+append :: Qreq -> B.ByteString -> Endomorphism IrcfsState
 append p s = L.modL (dataL p) (`mappend` Just s)
 
-substitute :: Qreq -> B.ByteString -> IrcfsState -> IrcfsState
+substitute :: Qreq -> B.ByteString -> Endomorphism IrcfsState
 substitute p s = L.setL (dataL p) (Just s)
 
-touch :: Qreq -> CTime -> IrcfsState -> IrcfsState
+touch :: Qreq -> CTime -> Endomorphism IrcfsState
 touch p t = L.modL (inodeL p) (fmap (setTimes t))
 
 type Timestamp = B.ByteString
@@ -226,7 +227,7 @@ write st t xs Qpong = (append Qpong xs st,[])
 write st stamp xs p@(Qdata k) = 
   let targets = maybeToList . L.getL (dataL (Qname k)) $ st
       line = mconcat [stamp, " < ",me,"> ", xs]
-      me = maybe mempty id (L.getL nickLens st) -- nick st
+      me = fromMaybe mempty (L.getL nickLens st) -- nick st
       n = fromIntegral (B.length line)
       msg = privmsg targets xs
   in  (append p line st, [msg])
@@ -235,7 +236,7 @@ write st _ _ _ = (st, mempty)
 privmsg :: [B.ByteString] -> B.ByteString -> I.Message
 privmsg targets x = I.Message Nothing I.PRIVMSG (I.Params targets (Just x))
 
-insertChannel :: B.ByteString -> CTime -> IrcfsState -> IrcfsState
+insertChannel :: B.ByteString -> CTime -> Endomorphism IrcfsState
 insertChannel name time st = 
   let 
       k = head (nextDirNames st)
@@ -263,7 +264,7 @@ insertChannel name time st =
             . L.modL nextDirNamesLens tail
   in  insert st
 
-removeChannel :: B.ByteString -> CTime -> IrcfsState -> IrcfsState
+removeChannel :: B.ByteString -> CTime -> Endomorphism IrcfsState
 removeChannel name time st =
   let
       str k = B.pack $ "del " ++ show k ++ " "
@@ -280,12 +281,17 @@ removeChannel name time st =
 
 -- (B.ByteString -> Maybe a, a -> B.ByteString)
 
-rm :: Qreq -> IrcfsState -> IrcfsState
+rm :: Qreq -> Endomorphism IrcfsState
 rm q = L.setL (inodeL q) Nothing
 
-rmdir :: Qreq -> IrcfsState -> IrcfsState
+rmdir :: Qreq -> Endomorphism IrcfsState
 rmdir (Qdir k) =  L.setL (targetLens k) Nothing . rm (Qdir k)
 rmdir _ = id
+
+rmdir' :: Qreq -> Endomorphism IrcfsState
+rmdir' (Qdir k) = rmdir (Qdir k) . rm (Qname k) . rm (Qusers k) 
+                . rm (Qdata k) . rm (Qctl k)
+rmdir' _ = id
 
 stat :: IrcfsState -> Qreq -> Maybe F.FileStat
 --stat st RootCtl = Just $ defaultFileStat st
@@ -294,5 +300,4 @@ stat st p = statFromInode <$> M.lookup p (inodes st)
 statFromInode (Inode st d) = 
   if F.statEntryType st == F.Directory then st 
   else st { F.statFileSize = fromIntegral (B.length d) }
-
 
