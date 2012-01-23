@@ -23,6 +23,7 @@ module Ircfs.Filesystem
   , rootDirFiles
   , subDirFiles
   , readDir
+  , readDir'
   , write
 
   , append
@@ -30,6 +31,7 @@ module Ircfs.Filesystem
   , touch
   , insertChannel
   , removeChannel
+  , rm
   ) where
 
 import           Prelude hiding ((.), id, read)
@@ -239,7 +241,7 @@ privmsg targets x = I.Message Nothing I.PRIVMSG (I.Params targets (Just x))
 insertChannel :: B.ByteString -> CTime -> Endomorphism IrcfsState
 insertChannel name time st = 
   let 
-      k = head (nextDirNames st)
+      k = minfree (IM.keys (targets st))
       target = Target k TChannel
       s = B.pack $ "new " ++ show k ++ " "
 
@@ -261,7 +263,6 @@ insertChannel name time st =
             . L.setL (inodeL (Qdir k)) (Just dirNode)
 
             . append Qevent (s `mappend` name `mappend` "\n")
-            . L.modL nextDirNamesLens tail
   in  insert st
 
 removeChannel :: B.ByteString -> CTime -> Endomorphism IrcfsState
@@ -269,13 +270,10 @@ removeChannel name time st =
   let
       str k = B.pack $ "del " ++ show k ++ " "
       text k = (mconcat [str k,name,"\n"])
-      del k = rmdir (Qdir k)
+      del k = rmdir' (Qdir k)
             . L.setL (targetMapLens' name) Nothing
-            . rm (Qname k) . rm (Qusers k) . rm (Qdata k) . rm (Qctl k)
             . append Qevent (text k)
-            . L.modL nextDirNamesLens (k:)
-  in  maybe st (\k -> del k st) 
-                (L.getL (targetMapLens' name) st)
+  in  maybe st (`del` st) (L.getL (targetMapLens' name) st)
 
 -- writeF :: FilePath -> S.ByteCount -> B.ByteString -> Ircfs [I.Message]
 
@@ -289,7 +287,7 @@ rmdir (Qdir k) =  L.setL (targetLens k) Nothing . rm (Qdir k)
 rmdir _ = id
 
 rmdir' :: Qreq -> Endomorphism IrcfsState
-rmdir' (Qdir k) = rmdir (Qdir k) . rm (Qname k) . rm (Qusers k) 
+rmdir' (Qdir k) = rmdir (Qdir k) . rm (Qname k) . rm (Qusers k)
                 . rm (Qdata k) . rm (Qctl k)
 rmdir' _ = id
 

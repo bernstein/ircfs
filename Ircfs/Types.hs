@@ -22,7 +22,6 @@ module Ircfs.Types
   , Qreq(..)
   , File
   , Target(..)
-  , Targets
   , To(..)
 
   , defaultFileStat
@@ -31,21 +30,25 @@ module Ircfs.Types
   , addrLens
   , nickLens
   , targetLens
+  , targetsLens
   , tTagL
   , eventLens
   , pongLens
   , targetMapLens
   , targetMapLens'
   , rawLens
-  , nextDirNamesLens
   , IrcOut(..)
   , liftLens
   , inodesL
   , inodeL
   , statL
   , dataL
+  , timeZoneL
+  , statusL
+  , threadsL
+  , Connection(..)
 
-  , now
+  , FH(..)
   ) where
 
 import Prelude hiding ((.), id)
@@ -66,19 +69,29 @@ import qualified System.Fuse as F
 import System.Posix.Types
 import qualified Data.Time as T
 import qualified Data.Time.Clock.POSIX as T
+import Control.Concurrent (ThreadId)
+
+data FH = FH
+  deriving (Show,Read,Eq)
 
 -- | IrcfsState, the irc file system state.
 data IrcfsState = IrcfsState
     { --connection :: Connection
       addr :: File
-    , targets :: Targets -- M.Map Int Target
-    , nextDirNames :: [Int]
+    , targets :: IntMap Target
     , targetMap :: M.Map B.ByteString Int -- map directory number to target id
     , userID :: CUid
     , groupID :: CGid
+    , effectiveUserName :: String
     , inodes :: M.Map Qreq Inode
     , start :: CTime
+    , timeZone :: T.TimeZone
+    , status :: Connection
+    , threads :: [ThreadId]
     } 
+
+data Connection = Disconnected | Connecting | Connected
+  deriving (Show,Read,Eq)
 
 io :: MonadIO m => IO a -> m a
 io = liftIO
@@ -104,6 +117,8 @@ data Qreq = Qroot      -- "/"
           | Qraw       -- "/raw"
           | Qnick      -- "/nick"
           | Qpong      -- "/pong"
+          -- | Qaddr      -- "/addr"
+          -- | Qlag      -- "/lag"
           | Qdir   { dirNr :: Int } -- "/n"
           | Qctl   { dirNr :: Int } -- "/n/ctl"
           | Qname  { dirNr :: Int } -- "/n/name"
@@ -116,13 +131,22 @@ type File = B.ByteString
 --ctlLens :: L.Lens Connection File
 --ctlLens = L.lens ctlFile (\x s -> s { ctlFile = x })
  
+threadsL :: L.Lens IrcfsState [ThreadId]
+threadsL = L.lens threads (\x s -> s { threads = x })
+
+statusL :: L.Lens IrcfsState Connection
+statusL = L.lens status (\x s -> s { status = x })
+
+timeZoneL :: L.Lens IrcfsState T.TimeZone
+timeZoneL = L.lens timeZone (\x s -> s { timeZone = x })
+
 addrLens :: L.Lens IrcfsState File
 addrLens = L.lens addr (\x s -> s { addr = x })
 
 nickLens :: L.Lens IrcfsState (Maybe File)
 nickLens = dataL Qnick
 
-targetsLens :: L.Lens IrcfsState Targets
+targetsLens :: L.Lens IrcfsState (IntMap Target)
 targetsLens = L.lens targets (\x s -> s { targets = x })
 
 targetLens :: Int -> L.Lens IrcfsState (Maybe Target)
@@ -137,16 +161,11 @@ pongLens = dataL Qpong
 rawLens :: L.Lens IrcfsState (Maybe File)
 rawLens = dataL Qraw
 
-nextDirNamesLens :: L.Lens IrcfsState [Int]
-nextDirNamesLens = L.lens nextDirNames (\x s -> s { nextDirNames = x})
-
 targetMapLens :: L.Lens IrcfsState (M.Map B.ByteString Int)
 targetMapLens = L.lens targetMap (\x s -> s { targetMap = x})
 
 targetMapLens' :: B.ByteString -> L.Lens IrcfsState (Maybe Int)
 targetMapLens' s = L.mapLens s . targetMapLens
-
-type Targets = IntMap Target -- change to (IntMap Target)
 
 -- findTag 
 -- findTarget
@@ -182,7 +201,7 @@ inodeL p = L.mapLens p . inodesL
 statL :: Qreq -> L.Lens IrcfsState (Maybe F.FileStat)
 statL p = liftLens iStatL . inodeL p
 
-dataL :: Qreq -> L.Lens IrcfsState (Maybe B.ByteString)
+dataL :: Qreq -> L.Lens IrcfsState (Maybe FileData)
 dataL p = liftLens iDataL . inodeL p
 
 defaultFileStat :: IrcfsState -> F.FileStat
@@ -207,10 +226,6 @@ defaultDirStat st = (defaultFileStat st)
                 , F.statLinkCount = 2
                 , F.statFileSize = 4096
                 }
-
-now :: IO CTime
-now = fromIntegral . truncate <$> T.getPOSIXTime
--- T.posixSecondsToUTCTime . realToFrac <$> now
 
 -- data In  = FsRequest F.Request
 --          | Cmd CtlCommand
