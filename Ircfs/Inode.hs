@@ -43,6 +43,7 @@ import qualified System.Posix.Types as S
 import qualified Data.ByteString.Char8 as B
 import Data.Monoid
 import qualified Data.Lens.Common as L
+import           Ircfs.Misc
 
 data Inode = Inode
   {
@@ -132,16 +133,16 @@ iStatModificationTimeL = statModificationTimeL . iStatL
 iStatStatusChangeTimeL :: L.Lens Inode S.EpochTime
 iStatStatusChangeTimeL = statStatusChangeTimeL . iStatL
 
-chmod :: S.FileMode -> Inode -> Inode
+chmod :: S.FileMode -> Endomorphism Inode
 chmod = L.setL iStatFileModeL
 
-chown :: S.UserID -> Inode -> Inode
+chown :: S.UserID -> Endomorphism Inode
 chown = L.setL iStatFileOwnerL
 
-chgrp :: S.GroupID -> Inode -> Inode
+chgrp :: S.GroupID -> Endomorphism Inode
 chgrp = L.setL iStatFileGroupL
 
-setTimes :: S.EpochTime -> Inode -> Inode
+setTimes :: S.EpochTime -> Endomorphism Inode
 setTimes time =
       L.setL iStatModificationTimeL time
     . L.setL iStatAccessTimeL time
