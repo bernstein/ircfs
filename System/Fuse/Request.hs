@@ -22,6 +22,7 @@ import Foreign.C.Error (Errno,eNOENT)
 import qualified System.Posix.Types as S
 import System.Posix.IO
 import qualified Control.Concurrent as C
+import Ircfs.Types (FH(..))
 
 -- like a self-addressed envelope (SAE)
 data Request = ReqRep Tmsg (C.MVar Rmsg) | Req Tmsg
@@ -46,9 +47,6 @@ data Rmsg = Rread !B.ByteString
           | Rerror
   -- deriving (Show, Read, Eq)
   deriving (Show, Eq)
-
-data IrcfsFH = IrcfsFH
-  deriving (Show,Read,Eq)
 
 deriving instance Eq OpenMode
 deriving instance Eq OpenFileFlags
@@ -98,15 +96,15 @@ defaultFileStat = F.FileStat
                 }
 
 fsOpen :: C.Chan Request -> FilePath -> OpenMode -> OpenFileFlags -> 
-            IO (Either Errno IrcfsFH)
+            IO (Either Errno FH)
 fsOpen c p m f = do
   x <- fuseRequest c (Topen p m f)
   case x of
-    Ropen -> return (Right IrcfsFH)
+    Ropen -> return (Right FH)
     Rerror -> return (Left F.eNOENT)
     _ -> return (Left F.eNOENT)
 
-fsRead :: C.Chan Request -> FilePath -> IrcfsFH -> S.ByteCount ->
+fsRead :: C.Chan Request -> FilePath -> FH -> S.ByteCount ->
             S.FileOffset -> IO (Either Errno B.ByteString)
 fsRead c p _ bc off = do
   x <- fuseRequest c (Tread p bc off)
@@ -115,7 +113,7 @@ fsRead c p _ bc off = do
     Rerror -> return (Left F.eNOENT)
     _ -> return (Left F.eNOENT)
 
-fsWrite :: C.Chan Request -> FilePath -> IrcfsFH -> 
+fsWrite :: C.Chan Request -> FilePath -> FH ->
           B.ByteString -> S.FileOffset -> IO (Either Errno S.ByteCount)
 fsWrite c p _ s off = do
   x <- fuseRequest c (Twrite p s off)
