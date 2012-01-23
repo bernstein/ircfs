@@ -29,7 +29,6 @@ library
     Network.IRC.Message.Parser
     Network.IRC.Message.Types
     Network.IRC.Enumerator
-    System.Fuse.Request
   build-depends:
     base,
     bytestring >= 0.9,
