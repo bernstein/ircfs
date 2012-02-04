@@ -136,8 +136,6 @@ newFS a n = do
         . insertChannel a time
   return (insert st)
 
--- touch :: Time -> Inode -> Inode
-
 fsReadDir :: IORef Fs -> FilePath
           -> IO (Either Errno [(FilePath, F.FileStat)])
 fsReadDir ref p = do
@@ -277,7 +275,7 @@ doConnect ref server nick = do
         in atomicModifyIORef_ ref f
 
 connect :: IORef Fs -> N.Socket -> C.Chan B.ByteString -> IO ()
-connect ref s out = withSocket ref (s,out)
+connect ref s out = withSocket ref s out
   `E.finally`
       let f t = touch Qevent t . append Qevent "disconnect\n"
             . L.setL connectionL Disconnected
@@ -287,11 +285,11 @@ connect ref s out = withSocket ref (s,out)
 
 -- XXX
 readerFun ref xs = 
-    mapM_ (either ohNo (ircin ref) . AL.eitherResult . AL.parse I.message) xs
+    mapM_ (either err (ircin ref) . AL.eitherResult . AL.parse I.message) xs
   where
         f s t = touch Qevent t 
             . append Qevent (mconcat ["could not parse: ",(B.pack s),"\n"])
-        ohNo s = atomicModifyIORef_ ref . f s =<< now
+        err s = atomicModifyIORef_ ref . f s =<< now
 
 isPingMessage :: I.Message -> Bool
 isPingMessage (I.Message _ I.PING _) = True
@@ -309,8 +307,8 @@ pingFun ref sock = mapM_ f . filter isPingMessage
             atomicModifyIORef_ ref . f =<< now
         f _ = return ()
 
-withSocket ::  IORef Fs -> (N.Socket,C.Chan B.ByteString) -> IO ()
-withSocket ref (s,toSend) = do
+withSocket ::  IORef Fs -> N.Socket -> C.Chan B.ByteString -> IO ()
+withSocket ref s toSend = do
   st <- readIORef ref
   xs <- C.getChanContents toSend
   let pass = ""
@@ -324,20 +322,22 @@ withSocket ref (s,toSend) = do
         N.sendAll sock s
   N.sendAll s knock
   ircs <- ircLines <$> NL.getContents s
-  let str = map (AL.eitherResult . AL.parse I.message) ircs
+  let ms = rights . map (AL.eitherResult . AL.parse I.message) $ ircs
 
-  pingThr <- C.forkIO (pingFun ref s (rights str) `E.finally` putStrLn "pinger killed")
-  readerThr <- C.forkIO (readerFun ref ircs `E.finally` putStrLn "reader killed")
-
+  pingThr <- C.forkIO (pingFun ref s ms)
+                -- `E.finally` putStrLn "pinger killed")
+  readerThr <- C.forkIO (readerFun ref ircs)
+                -- `E.finally` putStrLn "reader killed")
   writer ref s `E.finally`
     (do
        send ref s "QUIT\r\n"
-       C.killThread readerThr >> C.killThread pingThr >> putStrLn "withSocket")
+       C.killThread readerThr >> C.killThread pingThr)
   return ()
 
-stop Disconnected = return ()
-stop Connecting = return ()
-stop (Connected t _) = C.killThread t
+stop :: Connection -> IO ()
+stop Disconnected     = return ()
+stop Connecting       = return ()
+stop (Connected t _)  = C.killThread t
 
 ircLines :: BL.ByteString -> [BL.ByteString]
 ircLines y = h : if BL.null t then [] else ircLines t
