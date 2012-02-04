@@ -20,10 +20,11 @@ module Network.IRC.Message.Parser
   , channel
   , prefix
   , nick
+  , host
   ) where
 
 import           Prelude hiding (takeWhile)
-import           Control.Applicative hiding (many)
+import           Control.Applicative -- hiding (many)
 import           Data.Attoparsec
 import qualified Data.Attoparsec.Char8 as P8
 import           Data.Attoparsec.Char8 (char8)
