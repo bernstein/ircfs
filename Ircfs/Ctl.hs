@@ -17,6 +17,7 @@ module Ircfs.Ctl
   (
     parseCtl
   , toMessage
+  , CtlCommand(..)
   ) where
 
 import           Control.Applicative hiding (many)
