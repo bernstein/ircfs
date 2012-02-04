@@ -20,6 +20,7 @@ module Network.IRC.Message.Parser
   , channel
   , prefix
   , nick
+  , host
   ) where
 
 import           Prelude hiding (takeWhile)
