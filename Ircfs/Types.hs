@@ -15,7 +15,7 @@
 
 module Ircfs.Types
   (
-    IrcfsState(..)
+    Fs(..)
   , runIrcfs
   , Ircfs(..)
   , io
@@ -74,8 +74,8 @@ import Control.Concurrent (ThreadId)
 data FH = FH
   deriving (Show,Read,Eq)
 
--- | IrcfsState, the irc file system state.
-data IrcfsState = IrcfsState
+-- | Fs, the irc file system state.
+data Fs = Fs
     {
       addr :: File
     , targets :: IntMap Target
@@ -108,13 +108,13 @@ instance Eq Connection where
 io :: MonadIO m => IO a -> m a
 io = liftIO
 
-runIrcfs :: IrcfsState -> Ircfs a -> IO (a, IrcfsState)
+runIrcfs :: Fs -> Ircfs a -> IO (a, Fs)
 runIrcfs st (Ircfs a) = runStateT a st
 
 -- | The Ircfs monad, 'StateT' transformer over 'IO'
 -- encapsulating the ircfs state.
-newtype Ircfs a = Ircfs (StateT IrcfsState IO a)
-  deriving (Functor, Monad, MonadIO, MonadState IrcfsState)
+newtype Ircfs a = Ircfs (StateT Fs IO a)
+  deriving (Functor, Monad, MonadIO, MonadState Fs)
 
 instance Applicative Ircfs where
   pure = return
@@ -143,37 +143,37 @@ type File = B.ByteString
 --ctlLens :: L.Lens Connection File
 --ctlLens = L.lens ctlFile (\x s -> s { ctlFile = x })
  
-connectionL :: L.Lens IrcfsState Connection
+connectionL :: L.Lens Fs Connection
 connectionL = L.lens connection (\x s -> s { connection = x })
 
-timeZoneL :: L.Lens IrcfsState T.TimeZone
+timeZoneL :: L.Lens Fs T.TimeZone
 timeZoneL = L.lens timeZone (\x s -> s { timeZone = x })
 
-addrLens :: L.Lens IrcfsState File
+addrLens :: L.Lens Fs File
 addrLens = L.lens addr (\x s -> s { addr = x })
 
-nickLens :: L.Lens IrcfsState (Maybe File)
+nickLens :: L.Lens Fs (Maybe File)
 nickLens = dataL Qnick
 
-targetsLens :: L.Lens IrcfsState (IntMap Target)
+targetsLens :: L.Lens Fs (IntMap Target)
 targetsLens = L.lens targets (\x s -> s { targets = x })
 
-targetLens :: Int -> L.Lens IrcfsState (Maybe Target)
+targetLens :: Int -> L.Lens Fs (Maybe Target)
 targetLens k = L.intMapLens k . targetsLens
 
-eventLens :: L.Lens IrcfsState (Maybe File)
+eventLens :: L.Lens Fs (Maybe File)
 eventLens = dataL Qevent
 
-pongLens :: L.Lens IrcfsState (Maybe File)
+pongLens :: L.Lens Fs (Maybe File)
 pongLens = dataL Qpong
 
-rawLens :: L.Lens IrcfsState (Maybe File)
+rawLens :: L.Lens Fs (Maybe File)
 rawLens = dataL Qraw
 
-targetMapLens :: L.Lens IrcfsState (M.Map B.ByteString Int)
+targetMapLens :: L.Lens Fs (M.Map B.ByteString Int)
 targetMapLens = L.lens targetMap (\x s -> s { targetMap = x})
 
-targetMapLens' :: B.ByteString -> L.Lens IrcfsState (Maybe Int)
+targetMapLens' :: B.ByteString -> L.Lens Fs (Maybe Int)
 targetMapLens' s = L.mapLens s . targetMapLens
 
 -- findTag 
@@ -201,19 +201,19 @@ newtype IrcOut = IrcOut { unIrcOut :: C.Chan B.ByteString }
 liftLens :: Applicative f => L.Lens a b -> L.Lens (f a) (f b)
 liftLens l = L.lens (fmap (L.getL l)) (liftA2 (L.setL l))
 
-inodesL :: L.Lens IrcfsState (M.Map Qreq Inode)
+inodesL :: L.Lens Fs (M.Map Qreq Inode)
 inodesL = L.lens inodes (\x s -> s { inodes = x })
 
-inodeL :: Qreq -> L.Lens IrcfsState (Maybe Inode)
+inodeL :: Qreq -> L.Lens Fs (Maybe Inode)
 inodeL p = L.mapLens p . inodesL
 
-statL :: Qreq -> L.Lens IrcfsState (Maybe F.FileStat)
+statL :: Qreq -> L.Lens Fs (Maybe F.FileStat)
 statL p = liftLens iStatL . inodeL p
 
-dataL :: Qreq -> L.Lens IrcfsState (Maybe FileData)
+dataL :: Qreq -> L.Lens Fs (Maybe FileData)
 dataL p = liftLens iDataL . inodeL p
 
-defaultFileStat :: IrcfsState -> F.FileStat
+defaultFileStat :: Fs -> F.FileStat
 defaultFileStat st = F.FileStat 
                 { F.statEntryType = F.RegularFile
                 , F.statFileMode = 0o222
@@ -228,7 +228,7 @@ defaultFileStat st = F.FileStat
                 , F.statStatusChangeTime = start st
                 }
 
-defaultDirStat :: IrcfsState -> F.FileStat
+defaultDirStat :: Fs -> F.FileStat
 defaultDirStat st = (defaultFileStat st)
                 { F.statEntryType = F.Directory
                 , F.statFileMode = 0o550

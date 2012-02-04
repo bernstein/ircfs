@@ -30,7 +30,7 @@ import           Ircfs.Filesystem
 import           Ircfs.Misc (Endomorphism, stamp')
 
 -- | Process incomming irc messages.
-processIrc :: CTime -> I.Message -> Endomorphism IrcfsState
+processIrc :: CTime -> I.Message -> Endomorphism Fs
 processIrc time (I.Message _ (I.CmdNumericReply 001) (I.Params _ _)) st =
   let now s = B.pack $ stamp' (timeZone s) time
       text s = mconcat [now s," RPL_WELCOME -- connected\n"]

@@ -144,13 +144,13 @@ fileStat Qctl {} = F.defaultFileStat { F.statFileMode = filemode Qrootctl }
 fileStat q       = F.defaultFileStat { F.statFileMode = filemode q }
 
 {-
-stat :: IrcfsState -> FilePath -> Maybe F.FileStat
+stat :: Fs -> FilePath -> Maybe F.FileStat
 stat st p = maybePlus1 <$> m <*> x
   where m = parsePath p
         x = stat' st =<< m
         maybePlus1 _ s = s
 
-stat' :: IrcfsState -> Qreq -> Maybe F.FileStat
+stat' :: Fs -> Qreq -> Maybe F.FileStat
 stat' f Qroot = Just $ F.defaultDirStat 
                             { F.statFileMode = filemode Qroot 
                             , F.statFileOwner = fromIntegral $ userID f
@@ -178,11 +178,11 @@ statFileSizeL :: L.Lens F.FileStat S.FileOffset
 statFileSizeL = L.lens F.statFileSize (\x s -> s { F.statFileSize = x })
 -}
 
-readF :: IrcfsState -> FilePath -> S.ByteCount -> S.FileOffset -> Maybe B.ByteString
+readF :: Fs -> FilePath -> S.ByteCount -> S.FileOffset -> Maybe B.ByteString
 readF s p bc off = cut <$> (read' s =<< parsePath p)
   where cut = B.take (fromIntegral bc) . B.drop (fromIntegral off)
 
-read' :: IrcfsState -> Qreq -> Maybe B.ByteString
+read' :: Fs -> Qreq -> Maybe B.ByteString
 read' _ Qroot        = Nothing
 read' con Qrootctl   = L.getL (dataL Qrootctl) con
 read' con Qevent     = L.getL (dataL Qevent) con
@@ -196,7 +196,7 @@ read' _ Qctl {}      = Just mempty
 read' _ Qdir {}      = Nothing
 read' _ _ = Nothing
 
-readDir' :: IrcfsState -> Qreq -> [(FilePath, F.FileStat)]
+readDir' :: Fs -> Qreq -> [(FilePath, F.FileStat)]
 readDir' st Qroot = 
   let ks = IM.keys (targets st)
       rootDir = map (showFilepath &&& fileStat) rootDirFiles
@@ -208,20 +208,20 @@ readDir' _ Qdir {} =
   in [(".", F.defaultDirStat), ("..",F.defaultDirStat)] ++ subDir
 readDir' _ _ = []
 
-readDir :: IrcfsState -> FilePath -> [(FilePath, F.FileStat)]
+readDir :: Fs -> FilePath -> [(FilePath, F.FileStat)]
 readDir st p = maybe [] (readDir' st) (parsePath p)
 
-append :: Qreq -> B.ByteString -> Endomorphism IrcfsState
+append :: Qreq -> B.ByteString -> Endomorphism Fs
 append p s = L.modL (dataL p) (`mappend` Just s)
 
-substitute :: Qreq -> B.ByteString -> Endomorphism IrcfsState
+substitute :: Qreq -> B.ByteString -> Endomorphism Fs
 substitute p s = L.setL (dataL p) (Just s)
 
-touch :: Qreq -> CTime -> Endomorphism IrcfsState
+touch :: Qreq -> CTime -> Endomorphism Fs
 touch p t = L.modL (inodeL p) (fmap (setTimes t))
 
 type Timestamp = B.ByteString
-write :: IrcfsState -> Timestamp -> B.ByteString -> Qreq -> (IrcfsState, [I.Message])
+write :: Fs -> Timestamp -> B.ByteString -> Qreq -> (Fs, [I.Message])
 write st _ _ Qrootctl = (st, mempty)
 write st t xs Qevent = (append Qevent xs st,[])
 write st t xs Qnick = (substitute Qnick xs st,[])
@@ -238,7 +238,7 @@ write st _ _ _ = (st, mempty)
 privmsg :: [B.ByteString] -> B.ByteString -> I.Message
 privmsg targets x = I.Message Nothing I.PRIVMSG (I.Params targets (Just x))
 
-insertChannel :: B.ByteString -> CTime -> Endomorphism IrcfsState
+insertChannel :: B.ByteString -> CTime -> Endomorphism Fs
 insertChannel name time st = 
   let 
       k = minfree (IM.keys (targets st))
@@ -265,7 +265,7 @@ insertChannel name time st =
             . append Qevent (s `mappend` name `mappend` "\n")
   in  if (M.member name (targetMap st)) then st else insert st
 
-removeChannel :: B.ByteString -> CTime -> Endomorphism IrcfsState
+removeChannel :: B.ByteString -> CTime -> Endomorphism Fs
 removeChannel name time st =
   let
       str k = B.pack $ "del " ++ show k ++ " "
@@ -279,19 +279,19 @@ removeChannel name time st =
 
 -- (B.ByteString -> Maybe a, a -> B.ByteString)
 
-rm :: Qreq -> Endomorphism IrcfsState
+rm :: Qreq -> Endomorphism Fs
 rm q = L.setL (inodeL q) Nothing
 
-rmdir :: Qreq -> Endomorphism IrcfsState
+rmdir :: Qreq -> Endomorphism Fs
 rmdir (Qdir k) =  L.setL (targetLens k) Nothing . rm (Qdir k)
 rmdir _ = id
 
-rmdir' :: Qreq -> Endomorphism IrcfsState
+rmdir' :: Qreq -> Endomorphism Fs
 rmdir' (Qdir k) = rmdir (Qdir k) . rm (Qname k) . rm (Qusers k)
                 . rm (Qdata k) . rm (Qctl k)
 rmdir' _ = id
 
-stat :: IrcfsState -> Qreq -> Maybe F.FileStat
+stat :: Fs -> Qreq -> Maybe F.FileStat
 --stat st RootCtl = Just $ defaultFileStat st
 stat st p = statFromInode <$> M.lookup p (inodes st)
 
