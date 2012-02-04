@@ -263,7 +263,7 @@ insertChannel name time st =
             . L.setL (inodeL (Qdir k)) (Just dirNode)
 
             . append Qevent (s `mappend` name `mappend` "\n")
-  in  insert st
+  in  if (M.member name (targetMap st)) then st else insert st
 
 removeChannel :: B.ByteString -> CTime -> Endomorphism IrcfsState
 removeChannel name time st =
