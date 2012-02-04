@@ -25,12 +25,13 @@ import qualified Data.ByteString as B
 import qualified Data.Attoparsec as A
 import qualified Data.Attoparsec.Char8 as A8
 import qualified Network.IRC.Message as I
+import qualified Network.IRC.Message.Parser as I
 
 data CtlCommand =
     Away { msg :: B.ByteString }
   | Back
   | Ban
-  | Connect
+  | Connect { server :: B.ByteString, nick :: B.ByteString}
   | Ctcp
   | Debug
   | Deop
@@ -66,9 +67,10 @@ parseCtl :: A.Parser CtlCommand
 parseCtl = awayCmd
       <|> backCmd
       -- ban
-      -- connect
+      <|> connectCmd
       -- ctcp
       <|> debugCmd
+      <|> disconnectCmd
       <|> joinCmd
       <|> meCmd
       <|> msgCmd
@@ -86,8 +88,13 @@ awayCmd :: A8.Parser CtlCommand
 awayCmd      = Away <$> (A8.string "away" *> I.space *> remainder)
 backCmd :: A8.Parser CtlCommand
 backCmd      = Back <$ A8.string "back"
+connectCmd :: A8.Parser CtlCommand
+connectCmd = Connect <$> (A8.string "connect" *> A8.skipSpace *> I.host)
+                      <*> (A8.skipSpace *> I.nick)
 debugCmd :: A8.Parser CtlCommand
 debugCmd     = Debug <$ A8.string "debug"
+disconnectCmd :: A8.Parser CtlCommand
+disconnectCmd = Disconnect <$ A8.string "disconnect"
 joinCmd :: A8.Parser CtlCommand
 joinCmd      = Join <$> (A8.string "join" *> I.space *> I.channel)
 meCmd :: A8.Parser CtlCommand
