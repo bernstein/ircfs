@@ -44,8 +44,7 @@ module Ircfs.Types
   , statL
   , dataL
   , timeZoneL
-  , statusL
-  , threadsL
+  , connectionL
   , Connection(..)
 
   , FH(..)
@@ -59,6 +58,7 @@ import Foreign.C.Types (CTime)
 --import qualified Network.IRC.Message as I
 --import qualified Data.Rope as R
 import qualified Control.Concurrent.Chan as C
+import qualified Control.Concurrent as C
 import Control.Monad.State
 import qualified Data.Lens.Common as L
 import Data.IntMap
@@ -76,7 +76,7 @@ data FH = FH
 
 -- | IrcfsState, the irc file system state.
 data IrcfsState = IrcfsState
-    { --connection :: Connection
+    {
       addr :: File
     , targets :: IntMap Target
     , targetMap :: M.Map B.ByteString Int -- map directory number to target id
@@ -86,12 +86,24 @@ data IrcfsState = IrcfsState
     , inodes :: M.Map Qreq Inode
     , start :: CTime
     , timeZone :: T.TimeZone
-    , status :: Connection
-    , threads :: [ThreadId]
+    , connection :: Connection
     } 
 
-data Connection = Disconnected | Connecting | Connected
-  deriving (Show,Read,Eq)
+data Connection
+  = Disconnected
+  | Connecting
+  | Connected { thr :: C.ThreadId, out :: C.Chan B.ByteString }
+
+instance Show Connection where
+  show (Connected t _) = "Connected " ++ show t ++ "<Chan>"
+  show Connecting = "Connecting"
+  show Disconnected = "Disconnected"
+
+instance Eq Connection where
+  (Connected a _) == (Connected b _) = a == b
+  Connecting == Connecting  = True
+  Disconnected == Disconnected = True
+  _ == _ = False
 
 io :: MonadIO m => IO a -> m a
 io = liftIO
@@ -131,11 +143,8 @@ type File = B.ByteString
 --ctlLens :: L.Lens Connection File
 --ctlLens = L.lens ctlFile (\x s -> s { ctlFile = x })
  
-threadsL :: L.Lens IrcfsState [ThreadId]
-threadsL = L.lens threads (\x s -> s { threads = x })
-
-statusL :: L.Lens IrcfsState Connection
-statusL = L.lens status (\x s -> s { status = x })
+connectionL :: L.Lens IrcfsState Connection
+connectionL = L.lens connection (\x s -> s { connection = x })
 
 timeZoneL :: L.Lens IrcfsState T.TimeZone
 timeZoneL = L.lens timeZone (\x s -> s { timeZone = x })
