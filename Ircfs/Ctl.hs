@@ -145,7 +145,7 @@ remainder = A.takeTill A8.isEndOfLine
 -- "
 
 -- XXX : TODO testing
-toMessage :: CtlCommand -> I.Message
+toMessage :: CtlCommand -> {- Maybe -} I.Message
 toMessage (Away s) = I.Message Nothing I.AWAY (I.Params [s] Nothing)
 toMessage Back     = I.Message Nothing I.AWAY (I.Params [] Nothing)
 toMessage (Connect s n) = I.Message Nothing I.ERROR (I.Params ["connect command"] Nothing)
