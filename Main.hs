@@ -21,7 +21,6 @@ import Foreign.C.Error
 import Foreign.C.Types (CTime)
 import qualified Data.Time as T
 import qualified Data.Time.Clock.POSIX as T
-import Data.IORef
 import System.Posix.Types
 import qualified System.Posix.User as S
 import System.FilePath (takeBaseName)
@@ -31,15 +30,23 @@ import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad (foldM, when)
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
+import qualified Control.Exception as E
 import qualified Network.Socket.Enumerator as E
+import qualified Network.Socket.ByteString.Lazy as NL (sendAll,getContents)
 import qualified Data.Enumerator as E hiding (drop)
 import qualified Data.Enumerator.List as EL
-import Data.Monoid
+import           Data.Monoid
+import           Data.Either
+import           Data.IORef
+import           Data.Maybe (fromMaybe)
 import qualified Data.Map as M
 import qualified Data.Lens.Common as L
 
 import qualified Network.Socket as N
 import qualified Network.Socket.ByteString  as N (sendAll)
+import qualified Data.ByteString.Lazy as BL hiding (elemIndex,head)
+import qualified Data.ByteString.Lazy.Char8 as BL hiding (map)
+import qualified Data.Attoparsec.Lazy as AL
 
 import Network.IRC.Enumerator
 import Ircfs.Types
@@ -49,59 +56,12 @@ import Ircfs.Filesystem
 import Ircfs.Ctl as I
 import Ircfs.Misc
 import qualified Ircfs.CmdLine as O
-import qualified System.Fuse.Request as F
 import Data.Attoparsec as A
 import qualified Network.IRC.Message as I
 
--- addr
--- XXX
--- | Listens on the socket, writes received messages to fsReq
-ircReader :: IrcOut -> IORef IrcfsState -> C.Chan F.Request -> N.Socket -> IO ()
-ircReader ircoutc ref fsReq socket =
-  E.run_ $ E.enumSocket 1024 socket E.$$ irclines E.=$ iterFuseWriteFs_ ircoutc ref fsReq
-
-foldMany :: Monad m => ([a] -> E.Iteratee a m b) -> E.Iteratee a m ()
-foldMany f = E.continue step where
-	step E.EOF = E.yield () E.EOF
-	step (E.Chunks []) = E.continue step
-	step (E.Chunks xs) = f xs >> E.continue step
-
-iterFuseWriteFs_ :: MonadIO m => IrcOut -> IORef IrcfsState -> C.Chan F.Request -> E.Iteratee B.ByteString m ()
-iterFuseWriteFs_ ircoutc ref fsReq = foldMany (liftIO . writeMany_ ircoutc ref fsReq)
-
-writeMany_ :: IrcOut -> IORef IrcfsState -> C.Chan F.Request -> [B.ByteString] -> IO (C.Chan F.Request)
-writeMany_ ircoutc ref fsReq xs = foldM write_ fsReq xs
-  where write_ c x = ircin ircoutc ref x >> return c
--- fsWrite ircoutc ref "/ctl" fh s off = do
-
-ircWriter :: N.Socket -> IrcOut -> IO ()
-ircWriter s out = mapM_ (N.sendAll s) =<< C.getChanContents (unIrcOut out) 
-
 -- | Initialize file system.
-fsInit :: IrcOut -> IORef IrcfsState -> C.Chan F.Request -> O.Config -> IO ()
-fsInit ircoutc ref fsReq cfg = do
-  s <- getSocket (O.addr cfg) (read (O.port cfg))
-  -- userEntry <- S.getUserEntryForID (fromIntegral uid)
-  readTh <- C.forkIO $ ircReader ircoutc ref fsReq s
-  !_ <- atomicModifyIORef ref (\st ->
-      let f = L.setL statusL Connected
-            . L.modL threadsL (readTh:)
-      in (f st, ()))
-
--- XXX
-  let nickMsg = B.pack $ "NICK " ++ O.nick cfg ++ "\r\n" 
-  N.sendAll s nickMsg
--- XXX
-  st <- readIORef ref
-  let userMsg = B.pack $ "USER " ++ (effectiveUserName st) ++ " 0 * :"
-                                ++ O.nick cfg ++"\r\n"
-  N.sendAll s userMsg
-  writeTh <- C.forkIO (ircWriter s ircoutc)
-  !_ <- atomicModifyIORef ref (\st ->
-      let f = L.setL statusL Connected
-            . L.modL threadsL (writeTh:)
-      in (f st, ()))
-  return ()
+fsInit :: IORef IrcfsState -> O.Config -> IO ()
+fsInit ref cfg = doConnect ref (B.pack (O.addr cfg)) (B.pack (O.nick cfg))
 
 fsDestroy :: IORef IrcfsState -> IO ()
 fsDestroy = disconnect
@@ -109,18 +69,17 @@ fsDestroy = disconnect
 main :: IO ()
 main = N.withSocketsDo $ do
   args <- O.cmdLine
-  fsReq <- C.newChan
   ref <- newIORef =<< newFS (B.pack . O.addr $ args) (B.pack . O.nick $ args)
   ircoutc <- IrcOut <$> C.newChan
   let ops = F.defaultFuseOps {
-              F.fuseInit          = fsInit ircoutc ref fsReq args
+              F.fuseInit          = fsInit ref args
             , F.fuseDestroy       = fsDestroy ref
             , F.fuseGetFileStat   = fsStat ref
             , F.fuseReadDirectory = fsReadDir ref
             , F.fuseOpenDirectory = fsOpenDirectory
             , F.fuseOpen          = fsOpen ref
             , F.fuseRead          = fsRead ref
-            , F.fuseWrite         = fsWrite ircoutc ref
+            , F.fuseWrite         = fsWrite ref
             , F.fuseSetFileSize   = fsTruncate
             }
 -- XXX
@@ -156,8 +115,7 @@ newFS a n = do
           , inodes = mempty
           , start = time
           , timeZone = tz
-          , status = Disconnected
-          , threads = []
+          , connection = Disconnected
           }
       emptyNode = setTimes time . chmod 0o440 $ mkInode (defaultFileStat st)
       rwNode = chmod 0o660 emptyNode
@@ -204,29 +162,26 @@ fsRead ref p _ bc off = do
 fsRelease :: IORef IrcfsState -> FilePath -> FH -> IO ()
 fsRelease _ _ _ = return ()
 
-
-raw ircoutc ref s = do
-  time <- now
-  !_ <- atomicModifyIORef ref (\st ->
-      let f = touch Qraw time . append Qraw (">>>" `mappend` s)
-      in (f st, ()))
-  C.writeChan (unIrcOut ircoutc) s
+raw ref s = conSend s =<< connection <$> readIORef ref
 
 -- write to ctj
 -- Todo if a msg is longer than 512 then split it into chunks
     -- XXX TODO: process ctl
     -- mR >>= processCtl
 -- XXX
-fsWrite :: IrcOut -> IORef IrcfsState -> FilePath -> FH -> B.ByteString 
+fsWrite :: IORef IrcfsState -> FilePath -> FH -> B.ByteString 
         -> FileOffset -> IO (Either Errno ByteCount)
-fsWrite ircoutc ref "/ctl" fh s off = do
+fsWrite ref "/ctl" fh s off = do
   let mR = A.maybeResult $ A.parse I.parseCtl s
-  maybe (return ()) (raw ircoutc ref . I.encode . toMessage) mR
+  case mR of
+    Just I.Disconnect -> disconnect ref 
+    Just (I.Connect s n) -> doConnect ref s n
+    _ -> maybe (return ()) (raw ref . I.encode . toMessage) mR
   return (Right (fromIntegral (B.length s)))
-fsWrite ircoutc ref "/raw" _ s _ = do
-  raw ircoutc ref s
+fsWrite ref "/raw" _ s _ = do
+  raw ref s
   return (Right (fromIntegral (B.length s)))
-fsWrite ircoutc ref p fh s off = do
+fsWrite ref p fh s off = do
   st <- readIORef ref
   stamp <- timeStamp
   time <- now
@@ -239,44 +194,152 @@ fsWrite ircoutc ref p fh s off = do
       return ()
     Just (st', msg:_) -> do
       !_ <- atomicModifyIORef ref (\_ -> (st',()))
-      raw ircoutc ref (I.encode msg)
+      raw ref (I.encode msg)
     _ -> return ()
   return . Right . fromIntegral . B.length $ s
-fsWrite _ _ _ _ _ _ = return (Left F.eNOENT)
+fsWrite _ _ _ _ _ = return (Left F.eNOENT)
 
-ircin :: IrcOut -> IORef IrcfsState -> B.ByteString -> IO ()
-ircin ircoutc ref s = do
-  --tz <- T.getCurrentTimeZone
-  time <- now
--- XXX
-  !_ <- atomicModifyIORef ref (\st ->
-       let f = touch Qraw time . append Qraw ("<<<" `mappend` s `mappend` "\n")
-      in (f st, ()))
-  let m = A.maybeResult $ A.feed (A.parse I.message s) "\n"
--- XXX
-  st <- readIORef ref
-  (ms',st') <- runIrcfs st $ maybe (return []) (processIrc time) m
-  !_ <- atomicModifyIORef ref (\_ -> (st',()))
-  -- das ist nur die pong message
-  mapM_ (\c -> fsWrite ircoutc ref "/raw" FH (I.encode c) 0) ms'
+ircin :: IORef IrcfsState -> I.Message -> IO ()
+ircin ref m = atomicModifyIORef_ ref . f =<< now
+  where f t = processIrc t m . touch Qraw t 
+          . append Qraw ("<<<" `mappend` (I.encode m))
 
 disconnect :: IORef IrcfsState -> IO ()
 disconnect ref = do
   print "disconnect"
+  con <- connection <$> readIORef ref
+  stop con
+{-
   st <- readIORef ref
-  when (Disconnected /= status st) $ do
-    mapM_ C.killThread (threads st)
-    atomicModifyIORef ref (\s ->
-        let f = L.setL statusL Disconnected
-              . L.setL threadsL []
+  when (Disconnected /= connection st) $ do
+    -- close socket
+    atomicModifyIORef_ ref (\s ->
+        let f = L.setL connectionL Disconnected
               . removeAllChannels
               . rm Qraw . rm Qnick . rm Qpong
             removeAllChannels =
                 id
               . L.setL targetMapLens mempty
               . L.setL targetsLens mempty
-        in  (f s,()))
-    return ()
+        in  (f s))
+-}
 
-connect ref addr nick pass = do
+doConnect :: IORef IrcfsState -> B.ByteString -> B.ByteString -> IO ()
+doConnect ref server nick = do
+  time <- now
+  out <- C.newChan
+  !doIt <- atomicModifyIORef ref
+     (\s ->
+        let f s = if Disconnected == connection s then (con s,True) else (s,False)
+            con =
+                  L.setL addrLens server
+                . touch (Qname 0) time
+                . L.setL (dataL (Qname 0)) (Just server)
+                . touch Qnick time
+                . L.setL (dataL Qnick) (Just nick)
+                . L.setL connectionL Connecting
+                . touch Qevent time . append Qevent (mconcat ["connecting ",server,"\n"])
+        in f s)
+  if doIt then do
+      st <- readIORef ref
+      let port = 6667
+          server = addr st
+      x <- E.catch (Just <$> getSocket (B.unpack server) port)
+        (\e -> do let err = show (e :: E.IOException)
+                  disconnect ref
+                  time <- now
+                  let f t = touch Qevent t
+                        . append Qevent "error while connecting\n"
+                        . L.setL connectionL Disconnected
+                  atomicModifyIORef_ ref (f time)
+                  return Nothing
+
+                  )
+      case x of
+        Nothing -> return ()
+        Just s -> do
+          thr <- C.forkIO (connect ref s out)
+          let f t = touch Qevent t
+                . append Qevent "connecting seems to be successful\n"
+                . L.setL connectionL (Connected thr out)
+          atomicModifyIORef_ ref (f time)
+     else
+        let f = touch Qevent time . append Qevent "already Connected or Connecting\n"
+        in atomicModifyIORef_ ref f
+
+connect :: IORef IrcfsState -> N.Socket -> C.Chan B.ByteString -> IO ()
+connect ref s out = withSocket ref (s,out)
+  `E.finally`
+      let f t = touch Qevent t . append Qevent "disconnect\n"
+            . L.setL connectionL Disconnected
+      in do
+          atomicModifyIORef_ ref . f =<< now
+          N.sClose s
+
+-- XXX
+readerFun ref xs = 
+    mapM_ (either ohNo (ircin ref) . AL.eitherResult . AL.parse I.message) xs
+  where
+        f s t = touch Qevent t 
+            . append Qevent (mconcat ["could not parse: ",(B.pack s),"\n"])
+        ohNo s = atomicModifyIORef_ ref . f s =<< now
+
+isPingMessage :: I.Message -> Bool
+isPingMessage (I.Message _ I.PING _) = True
+isPingMessage _ = False
+
+pingFun :: IORef IrcfsState -> N.Socket -> [I.Message] -> IO ()
+pingFun ref sock = mapM_ f . filter isPingMessage
+  where f (I.Message _ I.PING (I.Params _ (Just p))) =
+          let time t st = B.pack $ stamp' (timeZone st) t
+              text t st = mconcat [time t st," pong ",p,"\n"]
+              msg = I.encode $ I.Message Nothing I.PONG (I.Params [p] Nothing)
+              f t st = touch Qpong t . append Qpong (text t st) $ st
+          in do
+            N.sendAll sock msg
+            atomicModifyIORef_ ref . f =<< now
+
+withSocket ::  IORef IrcfsState -> (N.Socket,C.Chan B.ByteString) -> IO ()
+withSocket ref (s,toSend) = do
+  st <- readIORef ref
+  xs <- C.getChanContents toSend
+  let pass = ""
+      user = B.pack (effectiveUserName st)
+      nickName = fromMaybe "ircfs" (L.getL (dataL Qnick) st)
+      knock = sayHello pass nickName user
+      writer ref sock = mapM_ (send ref sock) xs
+      send ref sock s = do
+        let f t = touch Qraw t . append Qraw (">>>" `mappend` s)
+        atomicModifyIORef_ ref . f =<< now
+        N.sendAll sock s
+  N.sendAll s knock
+  ircs <- ircLines <$> NL.getContents s
+  let str = map (AL.eitherResult . AL.parse I.message) ircs
+
+  pingThr <- C.forkIO (pingFun ref s (rights str) `E.finally` putStrLn "pinger killed")
+  readerThr <- C.forkIO (readerFun ref ircs `E.finally` putStrLn "reader killed")
+
+  writer ref s `E.finally`
+    (do
+       send ref s "QUIT\r\n"
+       C.killThread readerThr >> C.killThread pingThr >> putStrLn "withSocket")
   return ()
+
+stop Disconnected = return ()
+stop Connecting = return ()
+stop (Connected t _) = C.killThread t
+
+ircLines :: BL.ByteString -> [BL.ByteString]
+ircLines y = h : if BL.null t then [] else ircLines t
+     where (h,t) = breakAfterCRLF y
+
+sayHello :: B.ByteString -> B.ByteString -> B.ByteString -> B.ByteString
+sayHello pass nick user =
+  (if not (B.null pass) then "PASS " `mappend` pass `mappend` "\r\n" else mempty)
+             `mappend` "NICK " `mappend` nick `mappend` "\r\nUSER "
+             `mappend` user `mappend` " 0 * :" `mappend` nick `mappend` "\r\n"
+
+conSend :: B.ByteString -> Connection -> IO ()
+conSend _ Disconnected = return ()
+conSend _ Connecting = return ()
+conSend x (Connected _ out) = C.writeChan out x
