@@ -50,7 +50,7 @@ import qualified Data.Map as M
 import           Foreign.C.Types (CTime)
 
 import qualified System.Fuse as F
-import qualified System.Fuse.Request as F
+--import qualified System.Fuse.Request as F
 import qualified System.Posix.Types as S
 import           System.FilePath
 
@@ -138,10 +138,10 @@ filemode Qusers{} = 0o444
 filemode Qdata {} = 0o666
 
 fileStat :: Qreq -> F.FileStat
-fileStat Qroot   = F.defaultDirStat  { F.statFileMode = filemode Qroot }
-fileStat Qdir {} = F.defaultDirStat  { F.statFileMode = filemode Qroot }
-fileStat Qctl {} = F.defaultFileStat { F.statFileMode = filemode Qrootctl }
-fileStat q       = F.defaultFileStat { F.statFileMode = filemode q }
+fileStat Qroot   = defDirStat  { F.statFileMode = filemode Qroot }
+fileStat Qdir {} = defDirStat  { F.statFileMode = filemode Qroot }
+fileStat Qctl {} = defFileStat { F.statFileMode = filemode Qrootctl }
+fileStat q       = defFileStat { F.statFileMode = filemode q }
 
 {-
 stat :: Fs -> FilePath -> Maybe F.FileStat
@@ -151,12 +151,12 @@ stat st p = maybePlus1 <$> m <*> x
         maybePlus1 _ s = s
 
 stat' :: Fs -> Qreq -> Maybe F.FileStat
-stat' f Qroot = Just $ F.defaultDirStat 
+stat' f Qroot = Just $ defDirStat 
                             { F.statFileMode = filemode Qroot 
                             , F.statFileOwner = fromIntegral $ userID f
                             , F.statFileGroup = fromIntegral $ groupID f
                             }
-stat' f Qdir {} = Just $ F.defaultDirStat 
+stat' f Qdir {} = Just $ defDirStat 
                             { F.statFileMode = filemode Qroot 
                             , F.statFileOwner = fromIntegral $ userID f
                             , F.statFileGroup = fromIntegral $ groupID f
@@ -200,12 +200,12 @@ readDir' :: Fs -> Qreq -> [(FilePath, F.FileStat)]
 readDir' st Qroot = 
   let ks = IM.keys (targets st)
       rootDir = map (showFilepath &&& fileStat) rootDirFiles
-      subDirs = map (\x -> (show x,F.defaultDirStat)) ks
-  in  [(".", F.defaultDirStat), ("..", F.defaultDirStat)] 
+      subDirs = map (\x -> (show x,defDirStat)) ks
+  in  [(".", defDirStat), ("..", defDirStat)] 
       ++ rootDir ++ subDirs
 readDir' _ Qdir {} = 
   let subDir = map (showFilepath &&& fileStat) subDirFiles
-  in [(".", F.defaultDirStat), ("..",F.defaultDirStat)] ++ subDir
+  in [(".", defDirStat), ("..",defDirStat)] ++ subDir
 readDir' _ _ = []
 
 readDir :: Fs -> FilePath -> [(FilePath, F.FileStat)]
@@ -296,6 +296,39 @@ stat :: Fs -> Qreq -> Maybe F.FileStat
 stat st p = statFromInode <$> M.lookup p (inodes st)
 
 statFromInode (Inode st d) = 
-  if F.statEntryType st == F.Directory then st 
+  if F.statEntryType st `eqEntryType` F.Directory then st 
   else st { F.statFileSize = fromIntegral (B.length d) }
+
+defDirStat :: F.FileStat
+defDirStat = defFileStat
+             { F.statEntryType = F.Directory
+             , F.statFileMode = 0o555
+             , F.statLinkCount = 2
+             , F.statFileSize = 4096
+             }
+
+defFileStat :: F.FileStat
+defFileStat = F.FileStat 
+                { F.statEntryType = F.RegularFile
+                , F.statFileMode = 0o222
+                , F.statLinkCount = 1
+                , F.statFileOwner = 0
+                , F.statFileGroup = 0
+                , F.statSpecialDeviceID = 0
+                , F.statFileSize = 0
+                , F.statBlocks = 1
+                , F.statAccessTime = 0
+                , F.statModificationTime = 0
+                , F.statStatusChangeTime = 0
+                }
+
+eqEntryType F.Unknown F.Unknown = True
+eqEntryType F.NamedPipe F.NamedPipe = True
+eqEntryType F.CharacterSpecial F.CharacterSpecial = True
+eqEntryType F.Directory F.Directory = True
+eqEntryType F.BlockSpecial F.BlockSpecial = True
+eqEntryType F.RegularFile F.RegularFile = True
+eqEntryType F.SymbolicLink F.SymbolicLink = True
+eqEntryType F.Socket F.Socket = True
+eqEntryType _ _ = False
 

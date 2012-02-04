@@ -298,6 +298,7 @@ pingFun ref sock = mapM_ f . filter isPingMessage
           in do
             N.sendAll sock msg
             atomicModifyIORef_ ref . f =<< now
+        f _ = return ()
 
 withSocket ::  IORef Fs -> (N.Socket,C.Chan B.ByteString) -> IO ()
 withSocket ref (s,toSend) = do
