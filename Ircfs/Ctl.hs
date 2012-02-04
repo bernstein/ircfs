@@ -148,6 +148,9 @@ remainder = A.takeTill A8.isEndOfLine
 toMessage :: CtlCommand -> I.Message
 toMessage (Away s) = I.Message Nothing I.AWAY (I.Params [s] Nothing)
 toMessage Back     = I.Message Nothing I.AWAY (I.Params [] Nothing)
+toMessage (Connect s n) = I.Message Nothing I.ERROR (I.Params ["connect command"] Nothing)
+toMessage Debug = I.Message Nothing I.ERROR (I.Params ["debug command"] Nothing)
+toMessage Disconnect = I.Message Nothing I.ERROR (I.Params ["disconnect command"] Nothing)
 toMessage (Join s) = I.Message Nothing I.JOIN (I.Params [s] Nothing)
 --toMessage (Me s)   = I.Message Nothing I.JOIN [s]
 toMessage (Names s) = I.Message Nothing I.NAMES (I.Params [s] Nothing)
