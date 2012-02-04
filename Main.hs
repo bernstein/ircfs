@@ -76,7 +76,7 @@ main = N.withSocketsDo $ do
             , F.fuseDestroy       = fsDestroy ref
             , F.fuseGetFileStat   = fsStat ref
             , F.fuseReadDirectory = fsReadDir ref
-            , F.fuseOpenDirectory = fsOpenDirectory
+            , F.fuseOpenDirectory = fsOpenDirectory ref
             , F.fuseOpen          = fsOpen ref
             , F.fuseRead          = fsRead ref
             , F.fuseWrite         = fsWrite ref
@@ -92,8 +92,12 @@ fsStat ref p
     let ms = stat st =<< parsePath p
     return $ maybe (Left F.eNOENT) Right ms
 
-fsOpenDirectory :: FilePath -> IO Errno
-fsOpenDirectory  = const (return eOK)
+fsOpenDirectory :: IORef Fs -> FilePath -> IO Errno
+fsOpenDirectory ref p = do
+  fs <- readIORef ref
+  return . fromMaybe eNOENT . fmap (f fs) . parsePath $ p
+  where
+    f fs p = if exists p fs && isDir p then eOK else eNOENT
 
 fsTruncate :: FilePath -> FileOffset -> IO Errno
 fsTruncate p _ = if takeBaseName p == "ctl" then return eOK else return eACCES
@@ -151,6 +155,11 @@ fsOpen ref p _ _ = do
 
 exists :: Qreq -> Fs -> Bool
 exists p = M.member p . inodes
+
+isDir :: Qreq -> Bool
+isDir Qroot = True
+isDir (Qdir {}) = True
+isDir _ = False
 
 fsRead :: IORef Fs -> FilePath -> FH -> ByteCount ->
             FileOffset -> IO (Either Errno B.ByteString)
