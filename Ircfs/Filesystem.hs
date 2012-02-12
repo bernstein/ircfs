@@ -32,6 +32,7 @@ module Ircfs.Filesystem
   , insertChannel
   , removeChannel
   , rm
+  , event
   ) where
 
 import           Prelude hiding ((.), id, read)
@@ -263,7 +264,7 @@ insertChannel name time st =
             . L.setL (inodeL (Qdir k)) (Just dirNode)
 
             . append Qevent (s `mappend` name `mappend` "\n")
-  in  if (M.member name (targetMap st)) then st else insert st
+  in  if M.member name (targetMap st) then st else insert st
 
 removeChannel :: B.ByteString -> CTime -> Endomorphism Fs
 removeChannel name time st =
@@ -276,7 +277,6 @@ removeChannel name time st =
   in  maybe st (`del` st) (L.getL (targetMapLens' name) st)
 
 -- writeF :: FilePath -> S.ByteCount -> B.ByteString -> Ircfs [I.Message]
-
 -- (B.ByteString -> Maybe a, a -> B.ByteString)
 
 rm :: Qreq -> Endomorphism Fs
@@ -286,6 +286,7 @@ rmdir :: Qreq -> Endomorphism Fs
 rmdir (Qdir k) =  L.setL (targetLens k) Nothing . rm (Qdir k)
 rmdir _ = id
 
+-- works like rm -rf
 rmdir' :: Qreq -> Endomorphism Fs
 rmdir' (Qdir k) = rmdir (Qdir k) . rm (Qname k) . rm (Qusers k)
                 . rm (Qdata k) . rm (Qctl k)
@@ -331,4 +332,7 @@ eqEntryType F.RegularFile F.RegularFile = True
 eqEntryType F.SymbolicLink F.SymbolicLink = True
 eqEntryType F.Socket F.Socket = True
 eqEntryType _ _ = False
+
+event ::  CTime -> B.ByteString -> Endomorphism Fs
+event time text = append Qevent text . touch Qevent time
 
