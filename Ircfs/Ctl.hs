@@ -75,8 +75,8 @@ parseCtl = awayCmd
       <|> meCmd
       <|> msgCmd
       <|> namesCmd
-      <|> nCmd
       <|> nickCmd
+      <|> nCmd
       <|> partCmd
       <|> pongCmd
       <|> quitCmd
