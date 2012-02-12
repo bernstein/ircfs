@@ -55,8 +55,7 @@ import Control.Category
 import Control.Applicative
 import qualified Data.ByteString.Char8 as B
 import Foreign.C.Types (CTime)
---import qualified Network.IRC.Message as I
---import qualified Data.Rope as R
+import qualified Network.IRC.Message as I
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
 import Control.Monad.State
@@ -86,6 +85,7 @@ data Fs = Fs
     , inodes :: M.Map Qreq Inode
     , start :: CTime
     , timeZone :: T.TimeZone
+    , inChan :: C.Chan (Either String I.Message)
     , connection :: Connection
     } 
 

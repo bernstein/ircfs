@@ -16,6 +16,7 @@ where
 import Prelude hiding ((.), id)
 import Control.Category
 import Control.Applicative
+import Data.Traversable (sequenceA)
 import qualified Data.ByteString.Char8 as B
 import Foreign.C.Error
 import Foreign.C.Types (CTime)
@@ -61,10 +62,12 @@ import qualified Network.IRC.Message as I
 
 -- | Initialize file system.
 fsInit :: IORef Fs -> O.Config -> IO ()
-fsInit ref cfg = doConnect ref (B.pack (O.addr cfg)) (B.pack (O.nick cfg))
-
-fsDestroy :: IORef Fs -> IO ()
-fsDestroy = disconnect
+fsInit ref cfg = do
+  let work r = either (err r) (sequence_ . sequenceA [ircin r, pong r, onError r])
+      f s t = event t (mconcat ["could not parse: ",B.pack s,"\n"])
+      err r s = atomicModifyIORef_ r . f s =<< now
+  thr <- C.forkIO (mapM_ (work ref) =<< C.getChanContents =<< (inChan <$> readIORef ref))
+  doConnect ref (B.pack (O.addr cfg)) (B.pack (O.nick cfg))
 
 main :: IO ()
 main = N.withSocketsDo $ do
@@ -73,7 +76,7 @@ main = N.withSocketsDo $ do
   ircoutc <- IrcOut <$> C.newChan
   let ops = F.defaultFuseOps {
               F.fuseInit          = fsInit ref args
-            , F.fuseDestroy       = fsDestroy ref
+            , F.fuseDestroy       = disconnect ref
             , F.fuseGetFileStat   = fsStat ref
             , F.fuseReadDirectory = fsReadDir ref
             , F.fuseOpenDirectory = fsOpenDirectory ref
@@ -83,7 +86,8 @@ main = N.withSocketsDo $ do
             , F.fuseSetFileSize   = fsTruncate
             }
 -- XXX
-  withArgs [O.mtpt args, "-d"] $ F.fuseMain ops F.defaultExceptionHandler
+  --withArgs [O.mtpt args, "-d"] $ F.fuseMain ops F.defaultExceptionHandler
+  withArgs [O.mtpt args] $ F.fuseMain ops F.defaultExceptionHandler
 
 fsStat :: IORef Fs -> FilePath -> IO (Either Errno F.FileStat)
 fsStat ref p
@@ -109,6 +113,7 @@ newFS a n = do
   name <- S.getEffectiveUserName
   time <- now
   tz <- T.getCurrentTimeZone
+  inc <- C.newChan
   let st = Fs 
           { addr = a
           , targets = mempty
@@ -119,6 +124,7 @@ newFS a n = do
           , inodes = mempty
           , start = time
           , timeZone = tz
+          , inChan = inc
           , connection = Disconnected
           }
       emptyNode = setTimes time . chmod 0o440 $ mkInode (defaultFileStat st)
@@ -169,8 +175,6 @@ fsRead ref p _ bc off = do
 fsRelease :: IORef Fs -> FilePath -> FH -> IO ()
 fsRelease _ _ _ = return ()
 
-raw ref s = conSend s =<< connection <$> readIORef ref
-
 -- write to ctj
 -- Todo if a msg is longer than 512 then split it into chunks
     -- XXX TODO: process ctl
@@ -183,10 +187,10 @@ fsWrite ref "/ctl" fh s off = do
   case mR of
     Just I.Disconnect -> disconnect ref 
     Just (I.Connect s n) -> doConnect ref s n
-    _ -> maybe (return ()) (raw ref . I.encode . toMessage) mR
+    _ -> maybe (return ()) (rawSend ref . I.encode . toMessage) mR
   return (Right (fromIntegral (B.length s)))
 fsWrite ref "/raw" _ s _ = do
-  raw ref s
+  rawSend ref s
   return (Right (fromIntegral (B.length s)))
 fsWrite ref p fh s off = do
   st <- readIORef ref
@@ -196,12 +200,10 @@ fsWrite ref p fh s off = do
   let x = write st stamp s <$> parsePath p
   case x of
 -- XXX
-    Just (st', []) -> do
-      !_ <- atomicModifyIORef ref (\_ -> (st',()))
-      return ()
+    Just (st', []) -> atomicModifyIORef_ ref (const st')
     Just (st', msg:_) -> do
-      !_ <- atomicModifyIORef ref (\_ -> (st',()))
-      raw ref (I.encode msg)
+      atomicModifyIORef_ ref (const st')
+      rawSend ref (I.encode msg)
     _ -> return ()
   return . Right . fromIntegral . B.length $ s
 fsWrite _ _ _ _ _ = return (Left F.eNOENT)
@@ -209,13 +211,30 @@ fsWrite _ _ _ _ _ = return (Left F.eNOENT)
 ircin :: IORef Fs -> I.Message -> IO ()
 ircin ref m = atomicModifyIORef_ ref . f =<< now
   where f t = processIrc t m . touch Qraw t 
-          . append Qraw ("<<<" `mappend` (I.encode m))
+          . append Qraw ("<<<" `mappend` I.encode m)
+
+pong :: IORef Fs -> I.Message -> IO ()
+pong ref (I.Message _ I.PING (I.Params _ (Just p))) =
+  let time t st = B.pack $ stamp' (timeZone st) t
+      text t st = mconcat [time t st," pong ",p,"\n"]
+      msg = I.encode $ I.Message Nothing I.PONG (I.Params [p] Nothing)
+      f t st = touch Qpong t . append Qpong (text t st) $ st
+  in do
+    rawSend ref msg
+    atomicModifyIORef_ ref . f =<< now
+pong _ _ = return ()
+
+onError :: IORef Fs -> I.Message -> IO ()
+onError ref (I.Message _ I.ERROR _) = disconnect ref
+onError _ _ = return ()
 
 disconnect :: IORef Fs -> IO ()
 disconnect ref = do
   print "disconnect"
+  rawSend ref "QUIT\r\n"
   con <- connection <$> readIORef ref
   stop con
+
 {-
   st <- readIORef ref
   when (Disconnected /= connection st) $ do
@@ -251,31 +270,31 @@ doConnect ref server nick = do
       st <- readIORef ref
       let port = 6667
           server = addr st
-      x <- E.catch (Just <$> getSocket (B.unpack server) port)
-        (\e -> do let err = show (e :: E.IOException)
-                  disconnect ref
-                  time <- now
-                  let f t = touch Qevent t
-                        . append Qevent "error while connecting\n"
-                        . L.setL connectionL Disconnected
-                  atomicModifyIORef_ ref (f time)
-                  return Nothing
-
+      x <- E.catch (Just <$> getSocket (B.unpack server) port) (\e -> do
+                  let
+                    err = "error while opening socket: "
+                          ++ show (e :: E.IOException)
+                          ++ "\n"
+                    f t = event t (B.pack err) . L.setL connectionL Disconnected
+                  Nothing <$ (atomicModifyIORef_ ref . f =<< now)
                   )
-      case x of
-        Nothing -> return ()
-        Just s -> do
+      maybe
+        (return ())
+        (\s -> do
           thr <- C.forkIO (connect ref s out)
-          let f t = touch Qevent t
-                . append Qevent "connecting seems to be successful\n"
+          let f t = event t "connecting seems to be successful\n"
                 . L.setL connectionL (Connected thr out)
-          atomicModifyIORef_ ref (f time)
-     else
-        let f = touch Qevent time . append Qevent "already Connected or Connecting\n"
-        in atomicModifyIORef_ ref f
+                -- XXX debug
+                . event t ("debug: threadID: " `mappend` B.pack (show thr) `mappend` "\n")
+          atomicModifyIORef_ ref (f time))
+        x
+     else atomicModifyIORef_ ref
+              (event time "already Connected or Connecting\n")
 
 connect :: IORef Fs -> N.Socket -> C.Chan B.ByteString -> IO ()
-connect ref s out = withSocket ref s out
+connect ref s out = do
+  st <- readIORef ref
+  withSocket st s out
   `E.finally`
       let f t = touch Qevent t . append Qevent "disconnect\n"
             . L.setL connectionL Disconnected
@@ -284,54 +303,27 @@ connect ref s out = withSocket ref s out
           N.sClose s
 
 -- XXX
-readerFun ref xs = 
-    mapM_ (either err (ircin ref) . AL.eitherResult . AL.parse I.message) xs
-  where
-        f s t = touch Qevent t 
-            . append Qevent (mconcat ["could not parse: ",(B.pack s),"\n"])
-        err s = atomicModifyIORef_ ref . f s =<< now
+readerFun inc = mapM_ (C.writeChan inc . AL.eitherResult . AL.parse I.message)
 
 isPingMessage :: I.Message -> Bool
 isPingMessage (I.Message _ I.PING _) = True
 isPingMessage _ = False
 
-pingFun :: IORef Fs -> N.Socket -> [I.Message] -> IO ()
-pingFun ref sock = mapM_ f . filter isPingMessage
-  where f (I.Message _ I.PING (I.Params _ (Just p))) =
-          let time t st = B.pack $ stamp' (timeZone st) t
-              text t st = mconcat [time t st," pong ",p,"\n"]
-              msg = I.encode $ I.Message Nothing I.PONG (I.Params [p] Nothing)
-              f t st = touch Qpong t . append Qpong (text t st) $ st
-          in do
-            N.sendAll sock msg
-            atomicModifyIORef_ ref . f =<< now
-        f _ = return ()
-
-withSocket ::  IORef Fs -> N.Socket -> C.Chan B.ByteString -> IO ()
-withSocket ref s toSend = do
-  st <- readIORef ref
+withSocket ::  Fs -> N.Socket -> C.Chan B.ByteString -> IO ()
+withSocket st s toSend = do
   xs <- C.getChanContents toSend
-  let pass = ""
+  let inc = inChan st
+      pass = ""
       user = B.pack (effectiveUserName st)
       nickName = fromMaybe "ircfs" (L.getL (dataL Qnick) st)
       knock = sayHello pass nickName user
-      writer ref sock = mapM_ (send ref sock) xs
-      send ref sock s = do
-        let f t = touch Qraw t . append Qraw (">>>" `mappend` s)
-        atomicModifyIORef_ ref . f =<< now
-        N.sendAll sock s
+      writer sock = mapM_ (N.sendAll sock) xs
   N.sendAll s knock
   ircs <- ircLines <$> NL.getContents s
   let ms = rights . map (AL.eitherResult . AL.parse I.message) $ ircs
 
-  pingThr <- C.forkIO (pingFun ref s ms)
-                -- `E.finally` putStrLn "pinger killed")
-  readerThr <- C.forkIO (readerFun ref ircs)
-                -- `E.finally` putStrLn "reader killed")
-  writer ref s `E.finally`
-    (do
-       send ref s "QUIT\r\n"
-       C.killThread readerThr >> C.killThread pingThr)
+  readerThr <- C.forkIO (readerFun inc ircs)
+  writer s `E.finally` C.killThread readerThr -- >> C.killThread pingThr)
   return ()
 
 stop :: Connection -> IO ()
@@ -349,7 +341,17 @@ sayHello pass nick user =
              `mappend` "NICK " `mappend` nick `mappend` "\r\nUSER "
              `mappend` user `mappend` " 0 * :" `mappend` nick `mappend` "\r\n"
 
-conSend :: B.ByteString -> Connection -> IO ()
-conSend _ Disconnected = return ()
-conSend _ Connecting = return ()
-conSend x (Connected _ out) = C.writeChan out x
+rawSend :: IORef Fs -> B.ByteString -> IO ()
+rawSend ref x = do
+  let msg t x = touch Qraw t . append Qraw (">>>" `mappend` x)
+      maybeSend t s =
+        if isConnected (connection s)
+        then (msg t x s, Just (out (connection s)))
+        else (s,Nothing)
+  !m <- atomicModifyIORef ref . maybeSend =<< now
+  maybe (return ()) (`C.writeChan` x) m
+
+isConnected :: Connection -> Bool
+isConnected (Connected {})  = True
+isConnected Disconnected    = False
+isConnected Connecting      = False
