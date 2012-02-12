@@ -21,7 +21,7 @@ import           Control.Category
 import qualified Data.Lens.Common as L
 import qualified Data.ByteString.Char8 as B
 import           Data.Monoid
-import           Data.Maybe (maybeToList)
+import           Data.Maybe (maybeToList, fromMaybe)
 import           Foreign.C.Types (CTime)
 
 import qualified Network.IRC.Message as I
@@ -34,49 +34,52 @@ processIrc :: CTime -> I.Message -> Endomorphism Fs
 processIrc time (I.Message _ (I.CmdNumericReply 001) (I.Params _ _)) st =
   let now s = B.pack $ stamp' (timeZone s) time
       text s = mconcat [now s," RPL_WELCOME -- connected\n"]
-  in  (touch Qevent time . append Qevent (text st)) $ st
--- example: PING :irc.funet.fi ; Ping message sent by server
+  in  event time (text st) st
+processIrc time m@(I.Message _ (I.CmdNumericReply 433) _) st =
+  let now s = B.pack $ stamp' (timeZone s) time
+      text s = mconcat [
+                    now s," ERR_NICKNAMEINUSE "
+                  , I.encode m
+                  , "please change your nick, or you will be disconneted at any moment now.\n"
+                  ]
+  in  event time (text st) st
 processIrc time (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params [] (Just new))) st =
   let yourNick = L.getL nickLens
-      someone = append Qevent (mconcat [n," changed nick to ",new,"\n"])
-             . touch Qevent time
-      you =  touch Qevent time
-           . append Qevent (mconcat ["You're now known as ",new,"\n"])
+      someone = event time (mconcat [n," changed nick to ",new,"\n"])
+      you =  event time (mconcat ["You're now known as ",new,"\n"])
            . touch Qnick time
            . substitute Qnick new
   in  if Just n == yourNick st then you st else someone st
 processIrc time (I.Message (Just (I.PrefixNick n _ _)) I.NICK (I.Params (new:_) _)) st =
-  let yourNick s = maybe mempty id (L.getL nickLens s) -- nick st
-      you =  append Qevent (mconcat ["You're now known as ",new,"\n"])
+  let yourNick s = fromMaybe mempty (L.getL nickLens s) -- nick st
+      you =  event time (mconcat ["You're now known as ",new,"\n"])
            . touch Qnick time
-           . touch Qevent time
            . substitute Qnick new
-      someone = append Qevent (mconcat [n," changed nick to ",new,"\n"])
-               . touch Qevent time
+      someone = event time (mconcat [n," changed nick to ",new,"\n"])
   in  if n == yourNick st then you st else someone st
 processIrc time (I.Message (Just (I.PrefixNick n _ _)) I.JOIN (I.Params [] (Just c))) st =
-  let yourNick s = L.getL nickLens s
+  let yourNick = L.getL nickLens
       ins = insertChannel c time
       -- someone = "add user to users file"
-  in  if (Just n == yourNick st) then ins st else st
+  in  if Just n == yourNick st then ins st else st
 processIrc time (I.Message (Just (I.PrefixNick n _ _)) I.JOIN (I.Params (c:_) _)) st =
-  let yourNick s = L.getL nickLens s
+  let yourNick = L.getL nickLens
       ins = insertChannel c time
       -- someone = "add user to users file"
-  in  if (Just n == yourNick st) then ins st else st
+  in  if Just n == yourNick st then ins st else st
 processIrc time (I.Message (Just (I.PrefixNick n _ _)) I.PART (I.Params (c:_) _)) st =
-  let yourNick s = L.getL nickLens s
+  let yourNick = L.getL nickLens
       rm = removeChannel c time
       -- someone = "say user left to users file"
-  in  if (Just n == yourNick st) then rm st else st
+  in  if Just n == yourNick st then rm st else st
 processIrc time (I.Message Nothing I.PRIVMSG (I.Params (c:cs) t)) st =
-  let n = maybe mempty id (L.getL nickLens st) -- nick st
+  let n = fromMaybe mempty (L.getL nickLens st) -- nick st
       tm = L.getL (targetMapLens' c) st
       now s = B.pack $ stamp' (timeZone s) time
       ts = maybeToList t
       f k = touch (Qdata k) time
            . append (Qdata k) (mconcat [now st," < ",n,"> ",B.unwords (cs++ts),"\n"])
-  in maybe st (\k -> f k st) tm
+  in maybe st (`f` st) tm
 processIrc time (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (I.Params (c:cs) t)) st =
   let tm = L.getL (targetMapLens' c) st
       ts = maybeToList t
@@ -84,9 +87,9 @@ processIrc time (I.Message (Just (I.PrefixNick n _ _)) I.PRIVMSG (I.Params (c:cs
       f k s =  touch (Qdata k) time
         . append (Qdata k) (mconcat [now s," < ",n,"> ",B.unwords (cs++ts),"\n"])
         $ s
-  in maybe st (\k -> f k st) tm
+  in maybe st (`f` st) tm
 processIrc time m@(I.Message _ I.ERROR _) st =
-  touch Qevent time . append Qevent (mconcat ["error ",I.encode m,"\n"]) $ st
+  event time (mconcat ["error ",I.encode m]) st
 processIrc _ _ st = st
 
 privmsg :: [B.ByteString] -> B.ByteString -> I.Message
