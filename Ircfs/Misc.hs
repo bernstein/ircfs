@@ -32,9 +32,6 @@ import qualified Data.ByteString.Char8 as B
 import           Data.List (partition)
 import           Data.Monoid
 import           Data.IORef
-import qualified Data.Time as T
-import System.Locale (defaultTimeLocale)
-import Foreign.C.Types (CTime)
 
 type Endomorphism a = a -> a
 
@@ -85,7 +82,7 @@ breakAfterCRLF bs = find 0 bs
             Nothing -> (bs,mempty)
             Just i ->
                     let (_,rest) = BL.splitAt (n+i) bs
-                    in if ("\r\n") `BL.isPrefixOf` rest then BL.splitAt (n+i+2) bs
+                    in if "\r\n" `BL.isPrefixOf` rest then BL.splitAt (n+i+2) bs
                        else find (n+i+1) rest
 
 timeStamp :: MonadIO m => m B.ByteString
