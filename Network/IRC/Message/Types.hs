@@ -26,7 +26,7 @@ import           Control.Applicative hiding (many)
 import           Data.Attoparsec
 import qualified Data.Attoparsec.Char8 as P8
 import           Data.Attoparsec.Char8 (char8)
-import Data.Word (Word8)
+import           Data.Word (Word8)
 import qualified Data.ByteString.Char8 as B hiding (map)
 import qualified Data.ByteString as BS
 

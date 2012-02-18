@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
--- Module:   Network.IRC.Message.Encod
+-- Module:   Network.IRC.Message.Encode
 -- Copyright: (c) Andreas-Christoph Bernstein 2011
 -- License: BSD3-style (see LICENSE)
 -- Maintainer: Andreas-Christoph Bernstein <andreas.bernstein@googlemail.com>
