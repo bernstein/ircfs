@@ -229,7 +229,7 @@ disconnect ref = do
   print "disconnect"
   rawSend ref "QUIT\r\n"
   con <- connection <$> readIORef ref
-  stop con
+  killCon con
 
 {-
   st <- readIORef ref
@@ -260,7 +260,7 @@ doConnect ref server nick = do
                 . touch Qnick time
                 . L.setL (dataL Qnick) (Just nick)
                 . L.setL connectionL Connecting
-                . touch Qevent time . append Qevent (mconcat ["connecting ",server,"\n"])
+                . event time (mconcat ["connecting ",server,"\n"])
         in f s)
   if doIt then do
       st <- readIORef ref
@@ -292,13 +292,10 @@ connect ref s out = do
   st <- readIORef ref
   withSocket st s out
   `E.finally`
-      let f t = touch Qevent t . append Qevent "disconnect\n"
-            . L.setL connectionL Disconnected
-      in do
-          atomicModifyIORef_ ref . f =<< now
-          N.sClose s
+      let f t = event t "disconnect\n" . L.setL connectionL Disconnected
+      in  now >>= atomicModifyIORef_ ref . f >> N.sClose s
 
--- XXX
+readerFun :: C.Chan (Either String I.Message) -> [BL.ByteString] -> IO ()
 readerFun inc = mapM_ (C.writeChan inc . AL.eitherResult . AL.parse I.message)
 
 isPingMessage :: I.Message -> Bool
@@ -316,16 +313,13 @@ withSocket st s toSend = do
       writer sock = mapM_ (N.sendAll sock) xs
   N.sendAll s knock
   ircs <- ircLines <$> NL.getContents s
-  let ms = rights . map (AL.eitherResult . AL.parse I.message) $ ircs
+  reader <- C.forkIO (readerFun inc ircs)
+  writer s `E.finally` C.killThread reader
 
-  readerThr <- C.forkIO (readerFun inc ircs)
-  writer s `E.finally` C.killThread readerThr -- >> C.killThread pingThr)
-  return ()
-
-stop :: Connection -> IO ()
-stop Disconnected     = return ()
-stop Connecting       = return ()
-stop (Connected t _)  = C.killThread t
+killCon :: Connection -> IO ()
+killCon Disconnected     = return ()
+killCon Connecting       = return ()
+killCon (Connected t _)  = C.killThread t
 
 ircLines :: BL.ByteString -> [BL.ByteString]
 ircLines y = h : if BL.null t then [] else ircLines t
