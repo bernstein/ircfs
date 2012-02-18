@@ -28,7 +28,6 @@ library
     Network.IRC.Message.Encode
     Network.IRC.Message.Parser
     Network.IRC.Message.Types
-    Network.IRC.Enumerator
   build-depends:
     base,
     bytestring >= 0.9,
@@ -37,12 +36,9 @@ library
     HFuse,
     unix,
     filepath,
-    enumerator,
     network,
-    network-enumerator,
     transformers,
     cmdargs,
-    attoparsec-enumerator,
     rope,
     mtl,
     data-lens,
@@ -58,9 +54,9 @@ executable ircfs
     Network.IRC.Message.Encode
     Network.IRC.Message.Parser
     Network.IRC.Message.Types
-    Network.IRC.Enumerator
     Ircfs.Ctl
     Ircfs.Types
     Ircfs.CmdLine
     Ircfs.Process
     Ircfs.Inode
+    Ircfs.Misc

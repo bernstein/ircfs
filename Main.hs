@@ -32,10 +32,7 @@ import Control.Monad (foldM, when)
 import qualified Control.Concurrent.Chan as C
 import qualified Control.Concurrent as C
 import qualified Control.Exception as E
-import qualified Network.Socket.Enumerator as E
 import qualified Network.Socket.ByteString.Lazy as NL (sendAll,getContents)
-import qualified Data.Enumerator as E hiding (drop)
-import qualified Data.Enumerator.List as EL
 import           Data.Monoid
 import           Data.Either
 import           Data.IORef
@@ -49,7 +46,6 @@ import qualified Data.ByteString.Lazy as BL hiding (elemIndex,head)
 import qualified Data.ByteString.Lazy.Char8 as BL hiding (map)
 import qualified Data.Attoparsec.Lazy as AL
 
-import Network.IRC.Enumerator
 import Ircfs.Types
 import Ircfs.Process
 import Ircfs.Inode
