@@ -12,14 +12,21 @@
 -- Process incoming file system messages.
 --------------------------------------------------------------------------------
 module Ircfs.Misc
---  ( 
---  , timeStamp
---  , now
---  ) where
-where
+  (
+    timeStamp
+  , timeStamp'
+  , now
+  , stamp
+  , stamp'
+  , minfree
+  , breakAfterCRLF
+  , breakAfter
+  , split
+  , atomicModifyIORef_
+  , getSocket
+  , Endomorphism
+  ) where
 
-import Prelude hiding ((.), id)
-import Control.Category
 import Foreign.C.Types (CTime)
 import Control.Applicative
 import Control.Monad.IO.Class (liftIO, MonadIO)
@@ -27,8 +34,8 @@ import qualified Data.Time as T
 import qualified Data.Time.Clock.POSIX as T
 import System.Locale (defaultTimeLocale)
 import qualified Data.ByteString.Lazy.Char8 as BL hiding (map)
-import qualified Data.ByteString.Lazy as BL hiding (elemIndex,head)
 import qualified Data.ByteString.Char8 as B
+import qualified Network.Socket as N hiding (recv)
 import           Data.List (partition)
 import           Data.Monoid
 import           Data.IORef
@@ -51,6 +58,7 @@ stamp' z = T.formatTime defaultTimeLocale "%H:%M" . T.utcToLocalTime z . toUTCTi
 minfree :: [Int] -> Int
 minfree xs = minfrom 0 (length xs,xs)
 
+minfrom ::  Int -> (Int, [Int]) -> Int
 minfrom a (n,xs)
   | n == 0 = a
   | m == b - a = minfrom b (n-m, vs)
@@ -87,8 +95,8 @@ breakAfterCRLF bs = find 0 bs
 
 timeStamp :: MonadIO m => m B.ByteString
 timeStamp = do
-  now <- liftIO T.getCurrentTime
-  return . B.pack $ T.formatTime defaultTimeLocale "%H:%M" now
+  t <- liftIO T.getCurrentTime
+  return . B.pack $ T.formatTime defaultTimeLocale "%H:%M" t
 
 timeStamp' :: CTime -> B.ByteString
 timeStamp' = B.pack . stamp . toUTCTime
@@ -97,3 +105,11 @@ atomicModifyIORef_ :: IORef a -> (a -> a) -> IO ()
 atomicModifyIORef_ ref f = do
   !_ <- atomicModifyIORef ref (\st -> (f st,()))
   return ()
+
+getSocket :: String -> Int -> IO N.Socket
+getSocket host port = do
+  addrinfos <- N.getAddrInfo Nothing (Just host) (Just $ show port)
+  let serveraddr = head addrinfos
+  sock <- N.socket (N.addrFamily serveraddr) N.Stream N.defaultProtocol
+  N.connect sock (N.addrAddress serveraddr)
+  return sock
