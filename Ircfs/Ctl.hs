@@ -64,23 +64,39 @@ data CtlCommand =
   deriving (Show, Eq, Ord)
 
 parseCtl :: A.Parser CtlCommand
-parseCtl = awayCmd
+parseCtl
+        = awayCmd
       <|> backCmd
-      -- ban
+      <|> banCmd
       <|> connectCmd
-      -- ctcp
+      -- <|> ctcpCmd
       <|> debugCmd
+      -- <|> deopCmd
+      -- <|> devoiceCmd
       <|> disconnectCmd
+      -- <|> inviteCmd
       <|> joinCmd
+      -- <|> kickCmd
       <|> meCmd
+      -- <|> modeCmd
+      -- <|> motdCmd
       <|> msgCmd
       <|> namesCmd
       <|> nickCmd
+      -- <|> noticeCmd
       <|> nCmd
+      -- <|> opCmd
       <|> partCmd
+      -- <|> pingCmd
       <|> pongCmd
       <|> quitCmd
+      <|> reconnectCmd
       -- <|> removeCmd
+      -- <|> timeCmd
+      -- <|> topicCmd
+      -- <|> umodeCmd
+      -- <|> unbanCmd
+      -- <|> voiceCmd
       <|> whoCmd
       <|> unknownCmd
 
@@ -88,6 +104,8 @@ awayCmd :: A8.Parser CtlCommand
 awayCmd = Away <$> (A8.string "away" *> A8.skipSpace *> remainder)
 backCmd :: A8.Parser CtlCommand
 backCmd = Back <$ A8.string "back"
+banCmd :: A8.Parser CtlCommand
+banCmd = Ban <$ A8.string "ban"
 connectCmd :: A8.Parser CtlCommand
 connectCmd = Connect <$> (A8.string "connect" *> A8.skipSpace *> I.host)
                       <*> (A8.skipSpace *> I.nick)
@@ -114,6 +132,8 @@ pongCmd :: A8.Parser CtlCommand
 pongCmd = Pong <$> (A8.string "pong" *> A8.skipSpace *> remainder)
 quitCmd :: A8.Parser CtlCommand
 quitCmd = Quit <$> (A8.string "quit" *> A8.skipSpace *> remainder)
+reconnectCmd :: A8.Parser CtlCommand
+reconnectCmd = Reconnect <$ A8.string "reconnect"
 --removeCmd = Remove <$> (A8.string "remove" *> A8.skipSpace *> remainder)
 whoCmd :: A8.Parser CtlCommand
 whoCmd = Who <$> (A8.string "whois" *> A8.skipSpace *> I.nick)
@@ -145,21 +165,18 @@ remainder = A.takeTill A8.isEndOfLine
 -- "
 
 -- XXX : TODO testing
-toMessage :: CtlCommand -> {- Maybe -} I.Message
-toMessage (Away s) = I.Message Nothing I.AWAY (I.Params [s] Nothing)
-toMessage Back     = I.Message Nothing I.AWAY (I.Params [] Nothing)
-toMessage (Connect s n) = I.Message Nothing I.ERROR (I.Params ["connect command"] Nothing)
-toMessage Debug = I.Message Nothing I.ERROR (I.Params ["debug command"] Nothing)
-toMessage Disconnect = I.Message Nothing I.ERROR (I.Params ["disconnect command"] Nothing)
-toMessage (Join s) = I.Message Nothing I.JOIN (I.Params [s] Nothing)
+toMessage :: CtlCommand -> Maybe I.Message
+toMessage (Away s) = Just $ I.Message Nothing I.AWAY (I.Params [s] Nothing)
+toMessage Back     = Just $ I.Message Nothing I.AWAY (I.Params [] Nothing)
+toMessage (Join s) = Just $ I.Message Nothing I.JOIN (I.Params [s] Nothing)
+toMessage (Names s) = Just $ I.Message Nothing I.NAMES (I.Params [s] Nothing)
+toMessage (Nick s) = Just $ I.Message Nothing I.NICK (I.Params [s] Nothing)
+toMessage (Part s) = Just $ I.Message Nothing I.PART (I.Params [s] Nothing)
+toMessage (Pong s) = Just $ I.Message Nothing I.PONG (I.Params [s] Nothing)
+toMessage (Privmsg t s) = Just $ I.Message Nothing I.PRIVMSG (I.Params [t] (Just s))
+toMessage (Quit s) = Just $ I.Message Nothing I.QUIT (I.Params [s] Nothing)
+toMessage (Who s) = Just $ I.Message Nothing I.WHO (I.Params [s] Nothing)
 --toMessage (Me s)   = I.Message Nothing I.JOIN [s]
-toMessage (Names s) = I.Message Nothing I.NAMES (I.Params [s] Nothing)
-toMessage (Nick s) = I.Message Nothing I.NICK (I.Params [s] Nothing)
-toMessage (Part s) = I.Message Nothing I.PART (I.Params [s] Nothing)
-toMessage (Pong s) = I.Message Nothing I.PONG (I.Params [s] Nothing)
-toMessage (Privmsg t s) = I.Message Nothing I.PRIVMSG (I.Params [t] (Just s))
-toMessage (Quit s) = I.Message Nothing I.QUIT (I.Params [s] Nothing)
 --toMessage (Remove s) = I.Message Nothing I.REMOVE [s]
-toMessage (Who s) = I.Message Nothing I.WHO (I.Params [s] Nothing)
-toMessage _ = I.Message Nothing I.ERROR (I.Params ["unknown CtlCommand"] Nothing)
+toMessage _ = Nothing
 

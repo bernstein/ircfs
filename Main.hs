@@ -187,7 +187,7 @@ fsWrite ref "/ctl" fh s off = do
   case mR of
     Just I.Disconnect -> disconnect ref 
     Just (I.Connect s n) -> doConnect ref s n
-    _ -> maybe (return ()) (rawSend ref . I.encode . toMessage) mR
+    _ -> maybe (return ()) (rawSend ref . I.encode) (toMessage =<< mR)
   return (Right (fromIntegral (B.length s)))
 fsWrite ref "/raw" _ s _ = do
   rawSend ref s
