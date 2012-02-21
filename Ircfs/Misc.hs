@@ -19,7 +19,6 @@ module Ircfs.Misc
   , stamp
   , stamp'
   , minfree
-  , breakAfterCRLF
   , breakAfter
   , split
   , atomicModifyIORef_
@@ -82,16 +81,6 @@ breakAfter str bs = find 0 bs
 split :: BL.ByteString -> BL.ByteString -> [BL.ByteString]
 split e bs = xs : if BL.null ys then [] else split e ys
      where (xs,ys) = breakAfter e bs
-
-breakAfterCRLF :: BL.ByteString -> (BL.ByteString, BL.ByteString)
-breakAfterCRLF bs = find 0 bs
-  where find n xs =
-          case BL.elemIndex '\r' xs of
-            Nothing -> (bs,mempty)
-            Just i ->
-                    let (_,rest) = BL.splitAt (n+i) bs
-                    in if "\r\n" `BL.isPrefixOf` rest then BL.splitAt (n+i+2) bs
-                       else find (n+i+1) rest
 
 timeStamp :: MonadIO m => m B.ByteString
 timeStamp = do
