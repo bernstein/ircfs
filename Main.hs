@@ -322,8 +322,7 @@ killCon Connecting       = return ()
 killCon (Connected t _)  = C.killThread t
 
 ircLines :: BL.ByteString -> [BL.ByteString]
-ircLines y = h : if BL.null t then [] else ircLines t
-     where (h,t) = breakAfterCRLF y
+ircLines = split "\r\n"
 
 sayHello :: B.ByteString -> B.ByteString -> B.ByteString -> B.ByteString
 sayHello pass nick user =
