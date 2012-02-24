@@ -13,15 +13,13 @@
 module Network.IRC.Message.Encode
   (
     fromMessage
-  , fromPrefix
-  , fromCommand
-  , fromParams
   , encode
   ) where
 
-import           Blaze.ByteString.Builder
 import           Network.IRC.Message.Types
+import           Blaze.ByteString.Builder
 import           Data.Monoid
+import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as L
 import qualified Data.ByteString.Char8 as B hiding (map)
 

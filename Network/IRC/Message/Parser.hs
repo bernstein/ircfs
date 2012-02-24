@@ -13,8 +13,8 @@
 
 module Network.IRC.Message.Parser
   (
+  -- * Strict Parsers
     message
-  , space
   , command
   , params
   , channel
@@ -25,12 +25,12 @@ module Network.IRC.Message.Parser
 
 import           Prelude hiding (takeWhile)
 import           Control.Applicative -- hiding (many)
-import           Data.Attoparsec
-import qualified Data.Attoparsec.Char8 as P8
-import           Data.Attoparsec.Char8 (char8)
+import qualified Data.Attoparsec as A
+import           Data.Attoparsec.Char8 hiding (digit,space)
+--import           Data.Attoparsec.Char8 (char8)
 import           Data.Word (Word8)
-import qualified Data.ByteString.Char8 as B hiding (map)
-import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as B8 --hiding (map)
+import qualified Data.ByteString as B
 import           Data.Monoid
 import           Network.IRC.Message.Types
 
@@ -104,8 +104,8 @@ command =  CmdNumericReply   <$> threeDigitNumber
        <|> WHOWAS   <$ string "WHOWAS"
        <|> WHO      <$ string "WHO"
 
-space :: Parser BS.ByteString
-space = takeWhile1 (==32)
+space :: Parser B.ByteString
+space = A.takeWhile1 (==32)
 
 params :: Parser Params
 params = 
@@ -119,14 +119,14 @@ params =
 
 type Middle = B.ByteString
 middle :: Parser Middle
-middle = BS.cons <$> nospcrlfcl <*> takeWhile (\c -> isNospcrlfcl c || c == 58)
+middle = B.cons <$> nospcrlfcl <*> A.takeWhile (\c -> isNospcrlfcl c || c == 58)
 
 type Trailing = B.ByteString
 trailing :: Parser Trailing
-trailing = BS.pack <$> many (char8 ':' <|> char8 ' ' <|> nospcrlfcl)
+trailing = B.pack <$> many (char8 ':' <|> char8 ' ' <|> nospcrlfcl)
 
 nocrlfcl :: Parser Word8
-nocrlfcl = satisfy isNospcrlfcl
+nocrlfcl = A.satisfy isNospcrlfcl
 
 isNocrlfcl :: Word8 -> Bool
 isNocrlfcl = not.(`elem` [0,10,13])
@@ -152,7 +152,7 @@ to =  ToChannel <$> channel
 type Channel = B.ByteString
 
 channel :: Parser Channel
-channel = BS.cons <$> satisfy (inClass "#&") <*> takeWhile1 isChstring
+channel = B.cons <$> A.satisfy (A.inClass "#&") <*> A.takeWhile1 isChstring
 
 type Servername = Host
 servername :: Parser Servername
@@ -160,59 +160,56 @@ servername = host
 
 type Host = B.ByteString
 host :: Parser Host
-host = takeWhile1 (inClass "a-zA-Z0-9./-")
+host = A.takeWhile1 (A.inClass "a-zA-Z0-9./-")
 
 type Nick = B.ByteString
 nick :: Parser Nick
-nick = BS.cons <$> letter <*> takeWhile 
-                            (\c -> isLetter c || P8.isDigit_w8 c || isSpecial c)
+nick = B.cons <$> letter <*> A.takeWhile 
+                        (\c -> isLetter c || isDigit_w8 c || isSpecial c)
 
 type Mask = B.ByteString
 mask :: Parser Mask
-mask = BS.cons <$> satisfy (inClass "#$") <*> takeWhile1 isChstring
+mask = B.cons <$> A.satisfy (A.inClass "#$") <*> A.takeWhile1 isChstring
 
 chstring :: Parser Word8
-chstring = satisfy isChstring
+chstring = A.satisfy isChstring
 
 isChstring :: Word8 -> Bool
-isChstring = notInClass "\32\BEL\NUL\r\n,"
+isChstring = A.notInClass "\32\BEL\NUL\r\n,"
 
 type User = B.ByteString
 user :: Parser User
 user = takeWhile1 (notInClass "\0\13\10\32@")
 
 letter :: Parser Word8 -- Char
-letter = satisfy isLetter
+letter = A.satisfy isLetter
 
 isLetter :: Word8 -> Bool
-isLetter = inClass "a-zA-Z"
-
-number :: Parser Word8
-number = digit
+isLetter = A.inClass "a-zA-Z"
 
 digit :: Parser Word8
-digit = satisfy P8.isDigit_w8
+digit = A.satisfy isDigit_w8
 
 special :: Parser Word8
-special = satisfy isSpecial
+special = A.satisfy isSpecial
 
 isSpecial :: Word8 -> Bool
 isSpecial = (`elem` [45,91,93,96,92,94,95,123,124,125])
 
 nonwhite :: Parser Word8
-nonwhite = satisfy isNonWhite
+nonwhite = A.satisfy isNonWhite
 
 isNonWhite :: Word8 -> Bool
 isNonWhite = not.(`elem` [32,00,13,10])
 
 threeDigitNumber :: Parser Int
-threeDigitNumber = addUp <$> number <*> number <*> number 
+threeDigitNumber = addUp <$> digit <*> digit <*> digit 
   where addUp a b c = fromIntegral (a-48) * 100 
                     + fromIntegral (b-48) * 10
                     + fromIntegral (c-48)
 
 nospcrlfcl :: Parser Word8
-nospcrlfcl = satisfy isNospcrlfcl
+nospcrlfcl = A.satisfy isNospcrlfcl
 
 -- nospcrlfcl =  %x01-09 / %x0B-0C / %x0E-1F / %x21-39 / %x3B-FF
 isNospcrlfcl :: Word8 -> Bool
