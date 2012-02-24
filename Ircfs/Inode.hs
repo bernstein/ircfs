@@ -41,8 +41,9 @@ import Foreign.C.Types (CTime)
 import qualified System.Fuse as F
 import qualified System.Posix.Types as S
 import qualified Data.ByteString.Char8 as B
-import Data.Monoid
-import qualified Data.Lens.Common as L
+import qualified Data.ByteString.Lazy as L
+import           Data.Monoid
+import           Data.Lens.Common
 import           Ircfs.Misc
 
 data Inode = Inode
@@ -53,97 +54,99 @@ data Inode = Inode
   deriving (Show)
 
 mkTextFileData :: B.ByteString -> FileData
+--mkTextFileData = L.fromChunks . pure
 mkTextFileData = id
 type FileData = B.ByteString
 
+mkInode ::  F.FileStat -> Inode
 mkInode st = Inode {iStat = st, iData = mempty}
 
 instance Eq Inode where
   (Inode s d) == (Inode s' d') = d==d' 
 
-iStatL :: L.Lens Inode F.FileStat
-iStatL = L.lens iStat (\x s -> s { iStat = x })
+iStatL :: Lens Inode F.FileStat
+iStatL = lens iStat (\x s -> s { iStat = x })
 
-iDataL :: L.Lens Inode FileData
-iDataL = L.lens iData (\x s -> s { iData = x })
+iDataL :: Lens Inode FileData
+iDataL = lens iData (\x s -> s { iData = x })
 
-statEntryTypeL :: L.Lens F.FileStat F.EntryType
-statEntryTypeL = L.lens F.statEntryType (\x s -> s { F.statEntryType = x })
+statEntryTypeL :: Lens F.FileStat F.EntryType
+statEntryTypeL = lens F.statEntryType (\x s -> s { F.statEntryType = x })
 
-statFileModeL :: L.Lens F.FileStat S.FileMode
-statFileModeL = L.lens F.statFileMode (\x s -> s { F.statFileMode = x })
+statFileModeL :: Lens F.FileStat S.FileMode
+statFileModeL = lens F.statFileMode (\x s -> s { F.statFileMode = x })
 
-statLinkCountL :: L.Lens F.FileStat S.LinkCount
-statLinkCountL = L.lens F.statLinkCount (\x s -> s { F.statLinkCount = x })
+statLinkCountL :: Lens F.FileStat S.LinkCount
+statLinkCountL = lens F.statLinkCount (\x s -> s { F.statLinkCount = x })
 
-statFileOwnerL :: L.Lens F.FileStat S.UserID
-statFileOwnerL = L.lens F.statFileOwner (\x s -> s { F.statFileOwner = x })
+statFileOwnerL :: Lens F.FileStat S.UserID
+statFileOwnerL = lens F.statFileOwner (\x s -> s { F.statFileOwner = x })
 
-statFileGroupL :: L.Lens F.FileStat S.GroupID
-statFileGroupL = L.lens F.statFileGroup (\x s -> s { F.statFileGroup = x })
+statFileGroupL :: Lens F.FileStat S.GroupID
+statFileGroupL = lens F.statFileGroup (\x s -> s { F.statFileGroup = x })
 
-statSpecialDeviceIDL :: L.Lens F.FileStat S.DeviceID
-statSpecialDeviceIDL = L.lens F.statSpecialDeviceID (\x s -> s { F.statSpecialDeviceID = x })
+statSpecialDeviceIDL :: Lens F.FileStat S.DeviceID
+statSpecialDeviceIDL = lens F.statSpecialDeviceID (\x s -> s { F.statSpecialDeviceID = x })
 
-statFileSizeL :: L.Lens F.FileStat S.FileOffset
-statFileSizeL = L.lens F.statFileSize (\x s -> s { F.statFileSize = x })
+statFileSizeL :: Lens F.FileStat S.FileOffset
+statFileSizeL = lens F.statFileSize (\x s -> s { F.statFileSize = x })
 
-statBlocksL :: L.Lens F.FileStat Integer
-statBlocksL = L.lens F.statBlocks (\x s -> s { F.statBlocks = x })
+statBlocksL :: Lens F.FileStat Integer
+statBlocksL = lens F.statBlocks (\x s -> s { F.statBlocks = x })
 
-statAccessTimeL :: L.Lens F.FileStat S.EpochTime
-statAccessTimeL = L.lens F.statAccessTime (\x s -> s { F.statAccessTime = x })
+statAccessTimeL :: Lens F.FileStat S.EpochTime
+statAccessTimeL = lens F.statAccessTime (\x s -> s { F.statAccessTime = x })
 
-statModificationTimeL :: L.Lens F.FileStat S.EpochTime
-statModificationTimeL = L.lens F.statModificationTime (\x s -> s { F.statModificationTime = x })
+statModificationTimeL :: Lens F.FileStat S.EpochTime
+statModificationTimeL = lens F.statModificationTime (\x s -> s { F.statModificationTime = x })
 
-statStatusChangeTimeL :: L.Lens F.FileStat S.EpochTime
-statStatusChangeTimeL = L.lens F.statStatusChangeTime (\x s -> s { F.statStatusChangeTime = x })
+statStatusChangeTimeL :: Lens F.FileStat S.EpochTime
+statStatusChangeTimeL = lens F.statStatusChangeTime (\x s -> s { F.statStatusChangeTime = x })
 
-iStatEntryTypeL :: L.Lens Inode F.EntryType
+iStatEntryTypeL :: Lens Inode F.EntryType
 iStatEntryTypeL = statEntryTypeL . iStatL
 
-iStatFileModeL :: L.Lens Inode S.FileMode
+iStatFileModeL :: Lens Inode S.FileMode
 iStatFileModeL = statFileModeL . iStatL
 
-iStatLinkCountL :: L.Lens Inode S.LinkCount
+iStatLinkCountL :: Lens Inode S.LinkCount
 iStatLinkCountL = statLinkCountL . iStatL
 
-iStatFileOwnerL :: L.Lens Inode S.UserID
+iStatFileOwnerL :: Lens Inode S.UserID
 iStatFileOwnerL = statFileOwnerL . iStatL
 
-iStatFileGroupL :: L.Lens Inode S.GroupID
+iStatFileGroupL :: Lens Inode S.GroupID
 iStatFileGroupL = statFileGroupL . iStatL
 
-iStatSpecialDeviceIDL :: L.Lens Inode S.DeviceID
+iStatSpecialDeviceIDL :: Lens Inode S.DeviceID
 iStatSpecialDeviceIDL = statSpecialDeviceIDL . iStatL
 
-iStatFileSizeL :: L.Lens Inode S.FileOffset
+iStatFileSizeL :: Lens Inode S.FileOffset
 iStatFileSizeL = statFileSizeL . iStatL
 
-iStatBlocksL :: L.Lens Inode Integer
+iStatBlocksL :: Lens Inode Integer
 iStatBlocksL = statBlocksL . iStatL
 
-iStatAccessTimeL :: L.Lens Inode S.EpochTime
+iStatAccessTimeL :: Lens Inode S.EpochTime
 iStatAccessTimeL = statAccessTimeL . iStatL
 
-iStatModificationTimeL :: L.Lens Inode S.EpochTime
+iStatModificationTimeL :: Lens Inode S.EpochTime
 iStatModificationTimeL = statModificationTimeL . iStatL
 
-iStatStatusChangeTimeL :: L.Lens Inode S.EpochTime
+iStatStatusChangeTimeL :: Lens Inode S.EpochTime
 iStatStatusChangeTimeL = statStatusChangeTimeL . iStatL
 
 chmod :: S.FileMode -> Endomorphism Inode
-chmod = L.setL iStatFileModeL
+chmod = setL iStatFileModeL
 
 chown :: S.UserID -> Endomorphism Inode
-chown = L.setL iStatFileOwnerL
+chown = setL iStatFileOwnerL
 
 chgrp :: S.GroupID -> Endomorphism Inode
-chgrp = L.setL iStatFileGroupL
+chgrp = setL iStatFileGroupL
 
 setTimes :: S.EpochTime -> Endomorphism Inode
 setTimes time =
-      L.setL iStatModificationTimeL time
-    . L.setL iStatAccessTimeL time
-    . L.setL iStatStatusChangeTimeL time
+      setL iStatModificationTimeL time
+    . setL iStatAccessTimeL time
+    . setL iStatStatusChangeTimeL time

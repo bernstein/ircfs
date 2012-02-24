@@ -152,7 +152,7 @@ timeZoneL = L.lens timeZone (\x s -> s { timeZone = x })
 addrLens :: L.Lens Fs File
 addrLens = L.lens addr (\x s -> s { addr = x })
 
-nickLens :: L.Lens Fs (Maybe File)
+nickLens :: L.Lens Fs (Maybe FileData)
 nickLens = dataL Qnick
 
 targetsLens :: L.Lens Fs (IntMap Target)
@@ -161,13 +161,13 @@ targetsLens = L.lens targets (\x s -> s { targets = x })
 targetLens :: Int -> L.Lens Fs (Maybe Target)
 targetLens k = L.intMapLens k . targetsLens
 
-eventLens :: L.Lens Fs (Maybe File)
+eventLens :: L.Lens Fs (Maybe FileData)
 eventLens = dataL Qevent
 
-pongLens :: L.Lens Fs (Maybe File)
+pongLens :: L.Lens Fs (Maybe FileData)
 pongLens = dataL Qpong
 
-rawLens :: L.Lens Fs (Maybe File)
+rawLens :: L.Lens Fs (Maybe FileData)
 rawLens = dataL Qraw
 
 targetMapLens :: L.Lens Fs (M.Map B.ByteString Int)
