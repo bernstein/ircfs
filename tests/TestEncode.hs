@@ -157,21 +157,6 @@ genSpecial = elements $ [0x5B..0x60] ++ [0x7B..0x7D]
 genDigit :: Gen Word8
 genDigit = elements $ [0x30..0x39]
 
-prop_equal_prefix :: PrefixString -> Bool
-prop_equal_prefix pr = Just str == f str
-  where f = fmap I.prefixToByteString . mP I.prefix 
-        str  = unPrefixString pr
-mP p s = A.maybeResult $ A.feed (A.feed (A.parse p s) " ") mempty
-
-prop_equal_command :: CommandString -> Bool
-prop_equal_command cmd = Just s == f s
-  where f = fmap I.commandToByteString . maybeP I.command 
-        s  = unCommandString cmd
-
-prop_idempotent_params :: Property
-prop_idempotent_params = forAll genParamsStr (\ps -> (e =<< e ps) == e ps)
-  where e = fmap I.paramsToByteString . maybeP I.params
-
 prop_idempotent_message :: Property
 prop_idempotent_message = forAll genMessage (\ms -> (e =<< e ms) == e ms)
   where e = fmap I.encode . maybeP I.message
@@ -190,12 +175,6 @@ gen3DigitNrStr :: Gen B.ByteString
 gen3DigitNrStr = elements . map BS.pack $
               [concatMap show [x,y,z] | x <- [0..9], y <- [0..9], z <- [0..9]]
 
-specs :: Specs
-specs = describe "Message" [
-  it "command" 
-    (property prop_equal_command)
-  ]
-
 maybeP ::  A.Parser r -> BS.ByteString -> Maybe r
 maybeP p s = A.maybeResult $ A.feed (A.parse p s) mempty
 
@@ -213,10 +192,7 @@ idempotent e a = e (e a) == e a
 main :: IO ()
 main = do
   -- hspec specs
-  quickCheckWith stdArgs { maxSuccess = 10000, maxSize = 300 } (
-        (label "prop_equal_command" prop_equal_command)
-    .&. (label "prop_equal_prefix" prop_equal_prefix)
-    .&. (label "prop_parsed" prop_parsed)
-    .&. (label "prop_idempotent_message" prop_idempotent_message)
-    .&. (label "prop_idempotent_params" prop_idempotent_params))
+  quickCheckWith stdArgs { maxSuccess = 20000, maxSize = 512 } (
+     (label "prop_idempotent_message" prop_idempotent_message)
+   .&. (label "prop_idempotent_message" prop_idempotent_message))
 

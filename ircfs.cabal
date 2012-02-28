@@ -1,5 +1,5 @@
 name:               ircfs
-version:            0.1.0
+version:            0.1.1
 synopsis:           IRC file system
 homepage:           http://github.com/bernstein/ircfs/
 license:            BSD3
@@ -7,7 +7,7 @@ license-file:       LICENSE
 category:           IRC
 author:             Andreas-Christoph Bernstein <andreas.bernstein@googlemail.com>
 maintainer:         Andreas-Christoph Bernstein <andreas.bernstein@googlemail.com>
-copyright:          Andreas-Christoph Bernstein 2011
+copyright:          Andreas-Christoph Bernstein 2011, 2012
 stability:          Beta
 tested-with:        GHC == 7.0.3
 cabal-version:      >= 1.6
@@ -25,21 +25,20 @@ source-repository head
 library
   exposed-modules:
     Network.IRC.Message
-    Network.IRC.Enumerator
-    System.Fuse.Request
+    Network.IRC.Message.Encode
+    Network.IRC.Message.Parser
+    Network.IRC.Message.Types
   build-depends:
     base,
     bytestring >= 0.9,
+    blaze-builder,
     attoparsec,
     HFuse,
     unix,
     filepath,
-    enumerator,
     network,
-    network-enumerator,
     transformers,
     cmdargs,
-    attoparsec-enumerator,
     rope,
     mtl,
     data-lens,
@@ -52,10 +51,13 @@ executable ircfs
   ghc-options:        -Wall -threaded
   other-modules:
     Network.IRC.Message
-    Network.IRC.Enumerator
-    System.Fuse.Request
-    Filesystem.IRC.IRCcon
+    Network.IRC.Message.Encode
+    Network.IRC.Message.Parser
+    Network.IRC.Message.Types
     Ircfs.Ctl
     Ircfs.Types
     Ircfs.CmdLine
     Ircfs.Process
+    Ircfs.Inode
+    Ircfs.Misc
+    Ircfs.Connect

@@ -17,6 +17,7 @@ module Ircfs.Ctl
   (
     parseCtl
   , toMessage
+  , CtlCommand(..)
   ) where
 
 import           Control.Applicative hiding (many)
@@ -24,12 +25,13 @@ import qualified Data.ByteString as B
 import qualified Data.Attoparsec as A
 import qualified Data.Attoparsec.Char8 as A8
 import qualified Network.IRC.Message as I
+import qualified Network.IRC.Message.Parser as I
 
 data CtlCommand =
     Away { msg :: B.ByteString }
   | Back
   | Ban
-  | Connect
+  | Connect { server :: B.ByteString, nick :: B.ByteString}
   | Ctcp
   | Debug
   | Deop
@@ -62,55 +64,81 @@ data CtlCommand =
   deriving (Show, Eq, Ord)
 
 parseCtl :: A.Parser CtlCommand
-parseCtl = awayCmd
+parseCtl
+        = awayCmd
       <|> backCmd
-      -- ban
-      -- connect
-      -- ctcp
+      <|> banCmd
+      <|> connectCmd
+      -- <|> ctcpCmd
       <|> debugCmd
+      -- <|> deopCmd
+      -- <|> devoiceCmd
+      <|> disconnectCmd
+      -- <|> inviteCmd
       <|> joinCmd
+      -- <|> kickCmd
       <|> meCmd
+      -- <|> modeCmd
+      -- <|> motdCmd
       <|> msgCmd
       <|> namesCmd
-      <|> nCmd
       <|> nickCmd
+      -- <|> noticeCmd
+      <|> nCmd
+      -- <|> opCmd
       <|> partCmd
+      -- <|> pingCmd
       <|> pongCmd
       <|> quitCmd
+      <|> reconnectCmd
       -- <|> removeCmd
+      -- <|> timeCmd
+      -- <|> topicCmd
+      -- <|> umodeCmd
+      -- <|> unbanCmd
+      -- <|> voiceCmd
       <|> whoCmd
       <|> unknownCmd
 
 awayCmd :: A8.Parser CtlCommand
-awayCmd      = Away <$> (A8.string "away" *> I.space *> remainder)
+awayCmd = Away <$> (A8.string "away" *> A8.skipSpace *> remainder)
 backCmd :: A8.Parser CtlCommand
-backCmd      = Back <$ A8.string "back"
+backCmd = Back <$ A8.string "back"
+banCmd :: A8.Parser CtlCommand
+banCmd = Ban <$ A8.string "ban"
+connectCmd :: A8.Parser CtlCommand
+connectCmd = Connect <$> (A8.string "connect" *> A8.skipSpace *> I.host)
+                      <*> (A8.skipSpace *> I.nick)
 debugCmd :: A8.Parser CtlCommand
-debugCmd     = Debug <$ A8.string "debug"
+debugCmd = Debug <$ A8.string "debug"
+disconnectCmd :: A8.Parser CtlCommand
+disconnectCmd = Disconnect <$ A8.string "disconnect"
 joinCmd :: A8.Parser CtlCommand
-joinCmd      = Join <$> (A8.string "join" *> I.space *> I.channel)
+joinCmd = Join <$> (A8.string "join" *> A8.skipSpace *> I.channel)
 meCmd :: A8.Parser CtlCommand
-meCmd        = Me <$> (A8.string "me" *> I.space *> remainder)
+meCmd = Me <$> (A8.string "me" *> A8.skipSpace *> remainder)
 msgCmd :: A8.Parser CtlCommand
-msgCmd       = Privmsg <$> (A8.string "msg" *> I.space *> (I.nick <|> I.channel)) 
-                        <*> (I.space *> remainder)
+msgCmd = Privmsg <$> (A8.string "msg" *> A8.skipSpace *> (I.nick <|> I.channel))
+                <*> (A8.skipSpace *> remainder)
 namesCmd :: A8.Parser CtlCommand
-namesCmd     = Names <$> (A8.string "names" *> I.space *> remainder)
+namesCmd = Names <$> (A8.string "names" *> A8.skipSpace *> remainder)
 nCmd :: A8.Parser CtlCommand
-nCmd         = Names <$> (A8.string "n" *> I.space *> remainder)
+nCmd = Names <$> (A8.string "n" *> A8.skipSpace *> remainder)
 nickCmd :: A8.Parser CtlCommand
-nickCmd      = Nick <$> (A8.string "nick" *> I.space *> I.nick)
+nickCmd = Nick <$> (A8.string "nick" *> A8.skipSpace *> I.nick)
 partCmd :: A8.Parser CtlCommand
-partCmd      = Part <$> (A8.string "part" *> I.space *> remainder)
+partCmd = Part <$> (A8.string "part" *> A8.skipSpace *> remainder)
 pongCmd :: A8.Parser CtlCommand
-pongCmd      = Pong <$> (A8.string "pong" *> I.space *> remainder)
+pongCmd = Pong <$> (A8.string "pong" *> A8.skipSpace *> remainder)
 quitCmd :: A8.Parser CtlCommand
-quitCmd      = Quit <$> (A8.string "quit" *> I.space *> remainder)
---removeCmd    = Remove <$> (A8.string "remove" *> I.space *> remainder)
+quitCmd = Quit <$> (A8.string "quit" *> A8.skipSpace *> remainder)
+reconnectCmd :: A8.Parser CtlCommand
+reconnectCmd = Reconnect <$ A8.string "reconnect"
+--removeCmd = Remove <$> (A8.string "remove" *> A8.skipSpace *> remainder)
 whoCmd :: A8.Parser CtlCommand
-whoCmd       = Who  <$> (A8.string "whois" *> I.space *> I.nick)
+whoCmd = Who <$> (A8.string "whois" *> A8.skipSpace *> I.nick)
 unknownCmd :: A8.Parser CtlCommand
-unknownCmd   = Unknown <$> remainder
+unknownCmd = Unknown <$> remainder
 
 remainder :: A.Parser B.ByteString
 remainder = A.takeTill A8.isEndOfLine
@@ -137,18 +165,18 @@ remainder = A.takeTill A8.isEndOfLine
 -- "
 
 -- XXX : TODO testing
-toMessage :: CtlCommand -> I.Message
-toMessage (Away s) = I.Message Nothing I.AWAY (I.Params [s] Nothing)
-toMessage Back     = I.Message Nothing I.AWAY (I.Params [] Nothing)
-toMessage (Join s) = I.Message Nothing I.JOIN (I.Params [s] Nothing)
+toMessage :: CtlCommand -> Maybe I.Message
+toMessage (Away s) = Just $ I.Message Nothing I.AWAY (I.Params [s] Nothing)
+toMessage Back     = Just $ I.Message Nothing I.AWAY (I.Params [] Nothing)
+toMessage (Join s) = Just $ I.Message Nothing I.JOIN (I.Params [s] Nothing)
+toMessage (Names s) = Just $ I.Message Nothing I.NAMES (I.Params [s] Nothing)
+toMessage (Nick s) = Just $ I.Message Nothing I.NICK (I.Params [s] Nothing)
+toMessage (Part s) = Just $ I.Message Nothing I.PART (I.Params [s] Nothing)
+toMessage (Pong s) = Just $ I.Message Nothing I.PONG (I.Params [s] Nothing)
+toMessage (Privmsg t s) = Just $ I.Message Nothing I.PRIVMSG (I.Params [t] (Just s))
+toMessage (Quit s) = Just $ I.Message Nothing I.QUIT (I.Params [s] Nothing)
+toMessage (Who s) = Just $ I.Message Nothing I.WHO (I.Params [s] Nothing)
 --toMessage (Me s)   = I.Message Nothing I.JOIN [s]
-toMessage (Names s) = I.Message Nothing I.NAMES (I.Params [s] Nothing)
-toMessage (Nick s) = I.Message Nothing I.NICK (I.Params [s] Nothing)
-toMessage (Part s) = I.Message Nothing I.PART (I.Params [s] Nothing)
-toMessage (Pong s) = I.Message Nothing I.PONG (I.Params [s] Nothing)
-toMessage (Privmsg t s) = I.Message Nothing I.PRIVMSG (I.Params [t] (Just s))
-toMessage (Quit s) = I.Message Nothing I.QUIT (I.Params [s] Nothing)
 --toMessage (Remove s) = I.Message Nothing I.REMOVE [s]
-toMessage (Who s) = I.Message Nothing I.WHO (I.Params [s] Nothing)
-toMessage _ = I.Message Nothing I.ERROR (I.Params ["unknown CtlCommand"] Nothing)
+toMessage _ = Nothing
 

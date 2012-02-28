@@ -9,7 +9,7 @@ I'm happy to receive bug reports, fixes, documentation enhancements,
 and other improvements.
 
 Please report bugs via the
-[github issue tracker](http://https://github.com/bernstein/pixelparty/issues).
+[github issue tracker](http://https://github.com/bernstein/ircfs/issues).
 
 Master [git repository](http://github.com/bernstein/ircfs):
 
