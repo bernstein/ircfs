@@ -38,6 +38,7 @@ import           Data.Either
 import           Data.IORef
 import           Data.Maybe (fromMaybe)
 import qualified Data.Map as M
+import qualified Data.IntMap as IM
 import qualified Data.Lens.Common as L
 
 import qualified Network.Socket as N
@@ -73,12 +74,13 @@ connect ref server nick = do
   if ok then do
       let port = 6667
       E.catch (do
-                sock <- getSocket (B.unpack server) port 
+                sock <- getSocket (B.unpack server) port
                 out <- C.newChan
                 let clean s =
                         -- set nick
                           touch Qnick time
                         . L.setL (dataL Qnick) (Just nick)
+                        . L.setL (dataL Qraw) (Just mempty)
                         -- create control channel
                         . insertChannel server time
                         -- remove all channels
@@ -87,7 +89,7 @@ connect ref server nick = do
                 atomicModifyIORef_ ref (clean time)
 
                 thr <- C.forkIO (runCon ref sock out)
-                let f t = 
+                let f t =
                         event t "connecting seems to be successful\n"
                       . L.setL connectionL (Connected thr out)
                       . L.setL addrLens server
@@ -98,7 +100,40 @@ connect ref server nick = do
                   err = "error while opening socket: "
                         ++ show (e :: E.IOException)
                         ++ "\n"
-                  f t = event t (B.pack err) 
+                  f t = event t (B.pack err)
+                      . L.setL connectionL Disconnected
+                atomicModifyIORef_ ref (f time)
+              )
+     else atomicModifyIORef_ ref
+              (event time "already Connected or Connecting\n")
+
+reconnect :: IORef Fs -> IO ()
+reconnect ref = do
+  !ok <- connectingPossible ref
+  time <- now
+  if ok then do
+      let port = 6667
+      E.catch (do
+                st <- readIORef ref
+                let server = L.getL addrLens st
+                    msgs = I.encode <$> rejoinMsgs st
+                sock <- getSocket (B.unpack server) port
+                out <- C.newChan
+                C.writeList2Chan out msgs
+
+                thr <- C.forkIO (runCon ref sock out)
+                let f t =
+                        event t "connecting seems to be successful\n"
+                      . L.setL connectionL (Connected thr out)
+                      . L.setL addrLens server
+
+                atomicModifyIORef_ ref (f time))
+              (\e -> do
+                let
+                  err = "error while opening socket: "
+                        ++ show (e :: E.IOException)
+                        ++ "\n"
+                  f t = event t (B.pack err)
                       . L.setL connectionL Disconnected
                 atomicModifyIORef_ ref (f time)
               )
@@ -148,3 +183,16 @@ isConnected :: Connection -> Bool
 isConnected (Connected {})  = True
 isConnected Disconnected    = False
 isConnected Connecting      = False
+
+rejoinChannels :: Fs -> [B.ByteString]
+rejoinChannels fs =
+  let chanIds = map tag
+              . filter (\x -> to x == TChannel)
+              . IM.elems
+              . targets $ fs
+      channels = map fst . filter (\(_,t) -> t /= 0 && t `elem` chanIds) . M.toList . targetMap
+  in  channels fs
+
+rejoinMsgs :: Fs -> [I.Message]
+rejoinMsgs = map join . rejoinChannels
+  where join chan = I.Message Nothing I.JOIN (I.Params [chan] Nothing)

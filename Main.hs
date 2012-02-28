@@ -183,6 +183,7 @@ fsWrite ref "/ctl" fh s off = do
   let mR = A.maybeResult $ A.parse I.parseCtl s
   case mR of
     Just I.Disconnect -> disconnect ref 
+    Just I.Reconnect -> reconnect ref
     Just (I.Connect s n) -> connect ref s n
     _ -> maybe (return ()) (rawSend ref . I.encode) (toMessage =<< mR)
   return (Right (fromIntegral (B.length s)))
