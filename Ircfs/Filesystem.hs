@@ -251,7 +251,7 @@ insertChannel name time st =
       rwNode = chmod 0o660 emptyNode
       wNode = chmod 0o220 emptyNode
       nameNode = L.setL iDataL name  emptyNode
-      dirNode = mkInode (defaultDirStat st)
+      dirNode = setTimes time $ mkInode (defaultDirStat st)
 
       insert = 
               L.setL (targetLens k) (Just target)
