@@ -1,5 +1,5 @@
 name:               ircfs
-version:            0.1.0
+version:            0.1.1
 synopsis:           IRC file system
 homepage:           http://github.com/bernstein/ircfs/
 license:            BSD3
@@ -7,7 +7,7 @@ license-file:       LICENSE
 category:           IRC
 author:             Andreas-Christoph Bernstein <andreas.bernstein@googlemail.com>
 maintainer:         Andreas-Christoph Bernstein <andreas.bernstein@googlemail.com>
-copyright:          Andreas-Christoph Bernstein 2011
+copyright:          Andreas-Christoph Bernstein 2011, 2012
 stability:          Beta
 tested-with:        GHC == 7.0.3
 cabal-version:      >= 1.6
