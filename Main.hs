@@ -50,6 +50,7 @@ import Ircfs.Types
 import Ircfs.Process
 import Ircfs.Inode
 import Ircfs.Filesystem
+import Ircfs.Connect
 import Ircfs.Ctl as I
 import Ircfs.Misc
 import qualified Ircfs.CmdLine as O
@@ -63,7 +64,7 @@ fsInit ref cfg = do
       f s t = event t (mconcat ["could not parse: ",B.pack s,"\n"])
       err r s = atomicModifyIORef_ r . f s =<< now
   thr <- C.forkIO (mapM_ (work ref) =<< C.getChanContents =<< (inChan <$> readIORef ref))
-  doConnect ref (B.pack (O.addr cfg)) (B.pack (O.nick cfg))
+  connect ref (B.pack (O.addr cfg)) (B.pack (O.nick cfg))
 
 main :: IO ()
 main = N.withSocketsDo $ do
@@ -182,7 +183,7 @@ fsWrite ref "/ctl" fh s off = do
   let mR = A.maybeResult $ A.parse I.parseCtl s
   case mR of
     Just I.Disconnect -> disconnect ref 
-    Just (I.Connect s n) -> doConnect ref s n
+    Just (I.Connect s n) -> connect ref s n
     _ -> maybe (return ()) (rawSend ref . I.encode) (toMessage =<< mR)
   return (Right (fromIntegral (B.length s)))
 fsWrite ref "/raw" _ s _ = do
@@ -246,89 +247,9 @@ disconnect ref = do
         in  (f s))
 -}
 
-doConnect :: IORef Fs -> B.ByteString -> B.ByteString -> IO ()
-doConnect ref server nick = do
-  time <- now
-  out <- C.newChan
-  !doIt <- atomicModifyIORef ref
-     (\s ->
-        let f s = if Disconnected == connection s then (con s,True) else (s,False)
-            con =
-                  L.setL addrLens server
-                . touch (Qname 0) time
-                . L.setL (dataL (Qname 0)) (Just server)
-                . touch Qnick time
-                . L.setL (dataL Qnick) (Just nick)
-                . L.setL connectionL Connecting
-                . event time (mconcat ["connecting ",server,"\n"])
-        in f s)
-  if doIt then do
-      st <- readIORef ref
-      let port = 6667
-          server = addr st
-      x <- E.catch (Just <$> getSocket (B.unpack server) port) (\e -> do
-                  let
-                    err = "error while opening socket: "
-                          ++ show (e :: E.IOException)
-                          ++ "\n"
-                    f t = event t (B.pack err) . L.setL connectionL Disconnected
-                  Nothing <$ (atomicModifyIORef_ ref . f =<< now)
-                  )
-      maybe
-        (return ())
-        (\s -> do
-          thr <- C.forkIO (connect ref s out)
-          let f t = event t "connecting seems to be successful\n"
-                . L.setL connectionL (Connected thr out)
-                -- XXX debug
-                . event t ("debug: threadID: " `mappend` B.pack (show thr) `mappend` "\n")
-          atomicModifyIORef_ ref (f time))
-        x
-     else atomicModifyIORef_ ref
-              (event time "already Connected or Connecting\n")
-
-connect :: IORef Fs -> N.Socket -> C.Chan B.ByteString -> IO ()
-connect ref s out = do
-  st <- readIORef ref
-  withSocket st s out
-  `E.finally`
-      let f t = event t "disconnect\n" . L.setL connectionL Disconnected
-      in  now >>= atomicModifyIORef_ ref . f >> N.sClose s
-
-readerFun :: C.Chan (Either String I.Message) -> [BL.ByteString] -> IO ()
-readerFun inc = mapM_ (C.writeChan inc . AL.eitherResult . AL.parse I.message)
-
 isPingMessage :: I.Message -> Bool
 isPingMessage (I.Message _ I.PING _) = True
 isPingMessage _ = False
-
-withSocket ::  Fs -> N.Socket -> C.Chan B.ByteString -> IO ()
-withSocket st s toSend = do
-  xs <- C.getChanContents toSend
-  let inc = inChan st
-      pass = ""
-      user = B.pack (effectiveUserName st)
-      nickName = fromMaybe "ircfs" (L.getL (dataL Qnick) st)
-      knock = sayHello pass nickName user
-      writer sock = mapM_ (N.sendAll sock) xs
-  N.sendAll s knock
-  ircs <- ircLines <$> NL.getContents s
-  reader <- C.forkIO (readerFun inc ircs)
-  writer s `E.finally` C.killThread reader
-
-killCon :: Connection -> IO ()
-killCon Disconnected     = return ()
-killCon Connecting       = return ()
-killCon (Connected t _)  = C.killThread t
-
-ircLines :: BL.ByteString -> [BL.ByteString]
-ircLines = split "\r\n"
-
-sayHello :: B.ByteString -> B.ByteString -> B.ByteString -> B.ByteString
-sayHello pass nick user =
-  (if not (B.null pass) then "PASS " `mappend` pass `mappend` "\r\n" else mempty)
-             `mappend` "NICK " `mappend` nick `mappend` "\r\nUSER "
-             `mappend` user `mappend` " 0 * :" `mappend` nick `mappend` "\r\n"
 
 rawSend :: IORef Fs -> B.ByteString -> IO ()
 rawSend ref x = do
@@ -339,8 +260,3 @@ rawSend ref x = do
         else (s,Nothing)
   !m <- atomicModifyIORef ref . maybeSend =<< now
   maybe (return ()) (`C.writeChan` x) m
-
-isConnected :: Connection -> Bool
-isConnected (Connected {})  = True
-isConnected Disconnected    = False
-isConnected Connecting      = False

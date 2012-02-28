@@ -60,3 +60,4 @@ executable ircfs
     Ircfs.Process
     Ircfs.Inode
     Ircfs.Misc
+    Ircfs.Connect
